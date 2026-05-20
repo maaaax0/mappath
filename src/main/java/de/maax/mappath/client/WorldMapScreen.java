@@ -1,5 +1,9 @@
 package de.maax.mappath.client;
 
+import de.maax.mappath.BannerIconType;
+import de.maax.mappath.MapPath;
+import de.maax.mappath.MapPathConfig;
+import de.maax.mappath.StructureMarkerType;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
@@ -9,37 +13,76 @@ import net.minecraft.util.Mth;
 import com.mojang.math.Axis;
 import org.lwjgl.glfw.GLFW;
 
+import java.util.EnumMap;
+import java.util.HashSet;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 
 public final class WorldMapScreen extends Screen {
     private static final int SCREEN_PADDING = 12;
     private static final int PLAYER_MARKER_SIZE = 8;
     private static final int PLAYER_MARKER_TEXTURE_SIZE = 64;
-    private static final int CHUNK_SIZE = 16;
-    private static final float MIN_HOVERED_CHUNK_SCREEN_SIZE = 2.0F;
+    private static final int MIN_STRUCTURE_MARKER_SIZE = 4;
+    private static final int MAX_STRUCTURE_MARKER_SIZE = 14;
+    private static final int STRUCTURE_MARKER_TEXTURE_SIZE = 64;
+    private static final int STRUCTURE_MARKER_TOGGLE_SIZE = 20;
+    private static final int MARKER_TOGGLE_GAP = 4;
+    private static final int CONTEXT_MENU_WIDTH = 110;
+    private static final int CONTEXT_MENU_ITEM_HEIGHT = 18;
+    private static final int CONTEXT_MENU_ITEM_COUNT = 2;
+    private static final int WAYPOINT_CONTEXT_MENU_ITEM_COUNT = 4;
+    private static final int WAYPOINT_CONTEXT_MENU_WIDTH = 150;
+    private static final int STRUCTURE_CONTEXT_MENU_ITEM_COUNT = 4;
+    private static final int STRUCTURE_CONTEXT_MENU_WIDTH = 150;
+    private static final int CONTEXT_MENU_MARGIN = 4;
     private static final int UNEXPLORED_MAP_COLOR = 0xFF111417;
-    private static final int HOVERED_CHUNK_FILL_COLOR = 0x44FFFFFF;
-    private static final int HOVERED_CHUNK_BORDER_COLOR = 0xAAFFFFFF;
+    private static final int CONTEXT_MENU_BACKGROUND_COLOR = 0xEE16191D;
+    private static final int CONTEXT_MENU_BORDER_COLOR = 0xFF5D646C;
+    private static final int CONTEXT_MENU_HOVER_COLOR = 0xFF3A3F45;
+    private static final int CONTEXT_MENU_TEXT_COLOR = 0xFFE8EAED;
+    private static final int PENDING_DELETE_LABEL_COLOR = 0xFF9A9A9A;
+    private static final int PENDING_DELETE_LABEL_BACKGROUND_COLOR = 0x66000000;
+    private static final float PENDING_DELETE_MARKER_TINT = 0.45F;
+    private static final float PENDING_DELETE_MARKER_ALPHA = 0.55F;
+    private static final int TOGGLE_BACKGROUND_COLOR = 0xCC16191D;
+    private static final int TOGGLE_BORDER_COLOR = 0xFF5D646C;
+    private static final int TOGGLE_HOVER_COLOR = 0xEE26303A;
     private static final float MIN_ZOOM = 0.0025F;
     private static final float MAX_ZOOM = 50.0F;
     private static final float SCROLL_ZOOM_STEP = 1.16F;
-    private static final int ZOOM_REFRESH_DELAY_TICKS = 3;
-    private static final int DATA_REFRESH_DELAY_TICKS = 5;
-    private static final ResourceLocation PLAYER_MARKER_TEXTURE = ResourceLocation.fromNamespaceAndPath("mappath", "textures/gui/player.png");
+    private static final ResourceLocation PLAYER_MARKER_TEXTURE = ResourceLocation.fromNamespaceAndPath("mappath", "textures/gui/mag_icons/player.png");
+    private static final Map<StructureMarkerType, ResourceLocation> STRUCTURE_MARKER_TEXTURES = createStructureMarkerTextures();
+    private static final Map<BannerIconType, ResourceLocation> BANNER_ICON_TEXTURES = createBannerIconTextures();
 
-    private SurfaceMapTexture mapTexture;
+    private SurfaceMapAtlas mapAtlas;
     private int mapX;
     private int mapY;
     private int mapSize;
     private float zoom = 1.0F;
-    private int pendingZoomRefreshTicks;
-    private int pendingDataRefreshTicks;
-    private long observedStoreRevision;
     private double centerWorldX;
     private double centerWorldZ;
     private boolean draggingMap;
     private double lastDragMouseX;
     private double lastDragMouseY;
+    private double currentMouseX;
+    private double currentMouseY;
+    private boolean contextMenuOpen;
+    private int contextMenuX;
+    private int contextMenuY;
+    private int contextWorldX;
+    private int contextWorldZ;
+    private boolean waypointContextMenuOpen;
+    private int waypointContextMenuX;
+    private int waypointContextMenuY;
+    private UUID waypointContextMenuId;
+    private boolean structureContextMenuOpen;
+    private int structureContextMenuX;
+    private int structureContextMenuY;
+    private String structureContextMenuKey;
+    private final Set<UUID> pendingDeletedWaypoints = new HashSet<>();
+    private final Set<String> pendingDeletedStructureMarkers = new HashSet<>();
 
     private final WorldMapManager worldMapManager;
 
@@ -55,10 +98,15 @@ public final class WorldMapScreen extends Screen {
             this.centerWorldZ = this.minecraft.player.getZ();
         }
 
+        if (this.minecraft != null && this.minecraft.player != null) {
+            this.zoom = 1.0F;
+            this.centerWorldX = this.minecraft.player.getX();
+            this.centerWorldZ = this.minecraft.player.getZ();
+        }
+
         this.recalculateLayout();
-        if (this.mapTexture == null) {
-            this.mapTexture = new SurfaceMapTexture(this.worldMapManager);
-            this.refreshMapTexture();
+        if (this.mapAtlas == null) {
+            this.mapAtlas = this.worldMapManager.getMapAtlas(this.minecraft);
         }
     }
 
@@ -66,9 +114,6 @@ public final class WorldMapScreen extends Screen {
     public void resize(Minecraft minecraft, int width, int height) {
         super.resize(minecraft, width, height);
         this.recalculateLayout();
-        if (this.mapTexture != null) {
-            this.refreshMapTexture();
-        }
     }
 
     @Override
@@ -80,8 +125,11 @@ public final class WorldMapScreen extends Screen {
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
         super.render(guiGraphics, mouseX, mouseY, partialTick);
 
-        this.mapTexture.render(guiGraphics, this.mapX, this.mapY, this.mapSize, this.currentBlocksPerPixel(), this.centerWorldX, this.centerWorldZ);
-        this.renderHoveredChunk(guiGraphics, mouseX, mouseY);
+        if (this.mapAtlas != null) {
+            this.mapAtlas.render(guiGraphics, this.mapX, this.mapY, this.mapSize, this.centerWorldX, this.centerWorldZ, this.screenPixelsPerBlock());
+        }
+
+        this.renderMapMarkers(guiGraphics);
 
         float markerCenterX = this.worldToScreenX(this.minecraft != null && this.minecraft.player != null ? this.minecraft.player.getX() : this.centerWorldX);
         float markerCenterY = this.worldToScreenY(this.minecraft != null && this.minecraft.player != null ? this.minecraft.player.getZ() : this.centerWorldZ);
@@ -123,32 +171,30 @@ public final class WorldMapScreen extends Screen {
             0xFFE0E0E0,
             false
         );
+        if (MapPathConfig.CLIENT.showMapLoadStatus() && !this.worldMapManager.initialLoadComplete(this.minecraft)) {
+            guiGraphics.drawString(
+                this.font,
+                Component.translatable(
+                    "gui.mappath.loading_map",
+                    this.worldMapManager.loadedTileCount(this.minecraft),
+                    this.worldMapManager.totalTileCount(this.minecraft)
+                ),
+                SCREEN_PADDING,
+                SCREEN_PADDING + this.font.lineHeight + 2,
+                0xFFE0E0E0,
+                false
+            );
+        }
 
+        this.renderContextMenu(guiGraphics, mouseX, mouseY);
+        this.renderWaypointContextMenu(guiGraphics, mouseX, mouseY);
+        this.renderStructureContextMenu(guiGraphics, mouseX, mouseY);
+        this.renderWaypointsToggle(guiGraphics, mouseX, mouseY);
+        this.renderStructureMarkersToggle(guiGraphics, mouseX, mouseY);
     }
 
     @Override
     public void tick() {
-        boolean refresh = false;
-        if (this.pendingZoomRefreshTicks > 0) {
-            this.pendingZoomRefreshTicks--;
-            refresh = this.pendingZoomRefreshTicks == 0;
-        }
-
-        long storeRevision = this.worldMapManager.storeRevision(this.minecraft);
-        if (storeRevision != this.observedStoreRevision && this.pendingDataRefreshTicks == 0) {
-            this.pendingDataRefreshTicks = DATA_REFRESH_DELAY_TICKS;
-        }
-
-        if (this.pendingDataRefreshTicks > 0) {
-            this.pendingDataRefreshTicks--;
-            refresh = refresh || this.pendingDataRefreshTicks == 0;
-        }
-
-        if (refresh && this.mapTexture != null) {
-            this.refreshMapTexture();
-            this.pendingZoomRefreshTicks = 0;
-            this.pendingDataRefreshTicks = 0;
-        }
     }
 
     @Override
@@ -157,6 +203,20 @@ public final class WorldMapScreen extends Screen {
             this.onClose();
             return true;
         }
+        if (keyCode == GLFW.GLFW_KEY_DELETE) {
+            WaypointStore.Waypoint hoveredWaypoint = this.waypointAt(this.currentMouseX, this.currentMouseY);
+            if (hoveredWaypoint != null) {
+                this.deleteWaypoint(hoveredWaypoint.id());
+                this.closeAllContextMenus();
+                return true;
+            }
+            StructureMarkerStore.Marker hoveredStructureMarker = this.structureMarkerAt(this.currentMouseX, this.currentMouseY);
+            if (hoveredStructureMarker != null) {
+                this.deleteStructureMarker(hoveredStructureMarker.key());
+                this.closeAllContextMenus();
+                return true;
+            }
+        }
 
         return super.keyPressed(keyCode, scanCode, modifiers);
     }
@@ -164,6 +224,7 @@ public final class WorldMapScreen extends Screen {
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
         if (scrollY != 0.0D) {
+            this.closeAllContextMenus();
             this.changeZoom(mouseX, mouseY, scrollY);
             return true;
         }
@@ -173,6 +234,141 @@ public final class WorldMapScreen extends Screen {
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        this.currentMouseX = mouseX;
+        this.currentMouseY = mouseY;
+        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && this.isMouseOverStructureMarkersToggle(mouseX, mouseY)) {
+            this.closeAllContextMenus();
+            MapPathConfig.CLIENT.setShowStructureMarkers(!MapPathConfig.CLIENT.showStructureMarkers());
+            return true;
+        }
+        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && this.isMouseOverWaypointsToggle(mouseX, mouseY)) {
+            this.closeAllContextMenus();
+            MapPathConfig.CLIENT.setShowWaypoints(!MapPathConfig.CLIENT.showWaypoints());
+            return true;
+        }
+
+        if (this.waypointContextMenuOpen) {
+            if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+                int waypointMenuItem = this.waypointContextMenuItemAt(mouseX, mouseY);
+                if (this.isWaypointPendingDelete(this.waypointContextMenuId)) {
+                    if (waypointMenuItem == 0) {
+                        this.deleteContextWaypoint();
+                        this.waypointContextMenuOpen = false;
+                        return true;
+                    }
+                    if (waypointMenuItem == 1) {
+                        this.restoreContextWaypoint();
+                        this.waypointContextMenuOpen = false;
+                        return true;
+                    }
+                }
+                if (waypointMenuItem == 0) {
+                    this.teleportToWaypointContextPosition();
+                    this.waypointContextMenuOpen = false;
+                    return true;
+                }
+                if (waypointMenuItem == 1) {
+                    this.openWaypointEditScreen();
+                    this.waypointContextMenuOpen = false;
+                    return true;
+                }
+                if (waypointMenuItem == 2) {
+                    this.toggleContextWaypointHighlight();
+                    this.waypointContextMenuOpen = false;
+                    return true;
+                }
+                if (waypointMenuItem == 3) {
+                    this.markContextWaypointForDeletion();
+                    this.waypointContextMenuOpen = false;
+                    return true;
+                }
+            }
+
+            this.waypointContextMenuOpen = false;
+            if (button != GLFW.GLFW_MOUSE_BUTTON_RIGHT || !this.isMouseOverMap(mouseX, mouseY)) {
+                return true;
+            }
+        }
+
+        if (this.structureContextMenuOpen) {
+            if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+                int structureMenuItem = this.structureContextMenuItemAt(mouseX, mouseY);
+                if (this.isStructureMarkerPendingDelete(this.structureContextMenuKey)) {
+                    if (structureMenuItem == 0) {
+                        this.deleteContextStructure();
+                        this.structureContextMenuOpen = false;
+                        return true;
+                    }
+                    if (structureMenuItem == 1) {
+                        this.restoreContextStructure();
+                        this.structureContextMenuOpen = false;
+                        return true;
+                    }
+                }
+                if (structureMenuItem == 0) {
+                    this.teleportToStructureContextPosition();
+                    this.structureContextMenuOpen = false;
+                    return true;
+                }
+                if (structureMenuItem == 1) {
+                    this.openStructureEditScreen();
+                    this.structureContextMenuOpen = false;
+                    return true;
+                }
+                if (structureMenuItem == 2) {
+                    this.toggleContextStructureHighlight();
+                    this.structureContextMenuOpen = false;
+                    return true;
+                }
+                if (structureMenuItem == 3) {
+                    this.markContextStructureForDeletion();
+                    this.structureContextMenuOpen = false;
+                    return true;
+                }
+            }
+
+            this.structureContextMenuOpen = false;
+            if (button != GLFW.GLFW_MOUSE_BUTTON_RIGHT || !this.isMouseOverMap(mouseX, mouseY)) {
+                return true;
+            }
+        }
+
+        if (this.contextMenuOpen) {
+            if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+                int contextMenuItem = this.contextMenuItemAt(mouseX, mouseY);
+                if (contextMenuItem == 0) {
+                    this.teleportToContextPosition();
+                    this.contextMenuOpen = false;
+                    return true;
+                }
+                if (contextMenuItem == 1) {
+                    this.openWaypointCreateScreen();
+                    this.contextMenuOpen = false;
+                    return true;
+                }
+            }
+
+            this.contextMenuOpen = false;
+            if (button != GLFW.GLFW_MOUSE_BUTTON_RIGHT || !this.isMouseOverMap(mouseX, mouseY)) {
+                return true;
+            }
+        }
+
+        if (button == GLFW.GLFW_MOUSE_BUTTON_RIGHT && this.isMouseOverMap(mouseX, mouseY)) {
+            WaypointStore.Waypoint waypoint = this.waypointAt(mouseX, mouseY);
+            if (waypoint != null) {
+                this.openWaypointContextMenu(mouseX, mouseY, waypoint);
+            } else {
+                StructureMarkerStore.Marker structureMarker = this.structureMarkerAt(mouseX, mouseY);
+                if (structureMarker != null) {
+                    this.openStructureContextMenu(mouseX, mouseY, structureMarker);
+                } else {
+                    this.openContextMenu(mouseX, mouseY);
+                }
+            }
+            return true;
+        }
+
         if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && this.isMouseOverMap(mouseX, mouseY)) {
             this.draggingMap = true;
             this.lastDragMouseX = mouseX;
@@ -185,6 +381,8 @@ public final class WorldMapScreen extends Screen {
 
     @Override
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+        this.currentMouseX = mouseX;
+        this.currentMouseY = mouseY;
         if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && this.draggingMap) {
             this.panMap(mouseX - this.lastDragMouseX, mouseY - this.lastDragMouseY);
             this.lastDragMouseX = mouseX;
@@ -196,14 +394,16 @@ public final class WorldMapScreen extends Screen {
     }
 
     @Override
+    public void mouseMoved(double mouseX, double mouseY) {
+        this.currentMouseX = mouseX;
+        this.currentMouseY = mouseY;
+        super.mouseMoved(mouseX, mouseY);
+    }
+
+    @Override
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
         if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && this.draggingMap) {
             this.draggingMap = false;
-            if (this.mapTexture != null) {
-                this.refreshMapTexture();
-                this.pendingZoomRefreshTicks = 0;
-                this.pendingDataRefreshTicks = 0;
-            }
             return true;
         }
 
@@ -217,10 +417,7 @@ public final class WorldMapScreen extends Screen {
 
     @Override
     public void removed() {
-        if (this.mapTexture != null) {
-            this.mapTexture.close();
-            this.mapTexture = null;
-        }
+        this.mapAtlas = null;
     }
 
     private void recalculateLayout() {
@@ -243,6 +440,535 @@ public final class WorldMapScreen extends Screen {
         return mouseX >= this.mapX && mouseX < this.mapX + this.mapSize && mouseY >= this.mapY && mouseY < this.mapY + this.mapSize;
     }
 
+    private void renderMapMarkers(GuiGraphics guiGraphics) {
+        int markerSize = this.structureMarkerSize();
+        if (MapPathConfig.CLIENT.showStructureMarkers()) {
+            this.renderStructureMarkers(guiGraphics, markerSize);
+        }
+        if (MapPathConfig.CLIENT.showWaypoints()) {
+            this.renderWaypoints(guiGraphics, markerSize);
+        }
+    }
+
+    private void renderStructureMarkers(GuiGraphics guiGraphics, int markerSize) {
+        if (!MapPathConfig.CLIENT.showStructureMarkers()) {
+            return;
+        }
+
+        for (StructureMarkerStore.Marker marker : this.worldMapManager.structureMarkers(this.minecraft)) {
+            float markerCenterX = this.worldToScreenX(marker.worldX());
+            float markerCenterY = this.worldToScreenY(marker.worldZ());
+            if (markerCenterX < this.mapX - markerSize
+                || markerCenterX > this.mapX + this.mapSize + markerSize
+                || markerCenterY < this.mapY - markerSize
+                || markerCenterY > this.mapY + this.mapSize + markerSize) {
+                continue;
+            }
+
+            boolean pendingDelete = this.isStructureMarkerPendingDelete(marker.key());
+            if (pendingDelete) {
+                guiGraphics.setColor(PENDING_DELETE_MARKER_TINT, PENDING_DELETE_MARKER_TINT, PENDING_DELETE_MARKER_TINT, PENDING_DELETE_MARKER_ALPHA);
+            }
+            guiGraphics.blit(
+                STRUCTURE_MARKER_TEXTURES.get(marker.type()),
+                Mth.floor(markerCenterX - markerSize / 2.0F),
+                Mth.floor(markerCenterY - markerSize / 2.0F),
+                markerSize,
+                markerSize,
+                0.0F,
+                0.0F,
+                STRUCTURE_MARKER_TEXTURE_SIZE,
+                STRUCTURE_MARKER_TEXTURE_SIZE,
+                STRUCTURE_MARKER_TEXTURE_SIZE,
+                STRUCTURE_MARKER_TEXTURE_SIZE
+            );
+            if (pendingDelete) {
+                guiGraphics.setColor(1.0F, 1.0F, 1.0F, 1.0F);
+            }
+            if (!marker.name().isEmpty()) {
+                this.renderMarkerName(guiGraphics, marker.name(), markerCenterX, markerCenterY + markerSize / 2.0F + 2.0F, markerSize, pendingDelete);
+            }
+        }
+    }
+
+    private void renderWaypoints(GuiGraphics guiGraphics, int markerSize) {
+        for (WaypointStore.Waypoint waypoint : this.worldMapManager.waypoints(this.minecraft)) {
+            float markerCenterX = this.worldToScreenX(waypoint.worldX());
+            float markerCenterY = this.worldToScreenY(waypoint.worldZ());
+            if (markerCenterX < this.mapX - markerSize
+                || markerCenterX > this.mapX + this.mapSize + markerSize
+                || markerCenterY < this.mapY - markerSize
+                || markerCenterY > this.mapY + this.mapSize + markerSize + this.font.lineHeight + 4) {
+                continue;
+            }
+
+            boolean pendingDelete = this.isWaypointPendingDelete(waypoint.id());
+            if (pendingDelete) {
+                guiGraphics.setColor(PENDING_DELETE_MARKER_TINT, PENDING_DELETE_MARKER_TINT, PENDING_DELETE_MARKER_TINT, PENDING_DELETE_MARKER_ALPHA);
+            }
+            guiGraphics.blit(
+                BANNER_ICON_TEXTURES.get(waypoint.icon()),
+                Mth.floor(markerCenterX - markerSize / 2.0F),
+                Mth.floor(markerCenterY - markerSize / 2.0F),
+                markerSize,
+                markerSize,
+                0.0F,
+                0.0F,
+                STRUCTURE_MARKER_TEXTURE_SIZE,
+                STRUCTURE_MARKER_TEXTURE_SIZE,
+                STRUCTURE_MARKER_TEXTURE_SIZE,
+                STRUCTURE_MARKER_TEXTURE_SIZE
+            );
+            if (pendingDelete) {
+                guiGraphics.setColor(1.0F, 1.0F, 1.0F, 1.0F);
+            }
+            this.renderMarkerName(guiGraphics, waypoint.name(), markerCenterX, markerCenterY + markerSize / 2.0F + 2.0F, markerSize, pendingDelete);
+        }
+    }
+
+    private void renderMarkerName(GuiGraphics guiGraphics, String name, float centerX, float topY, int markerSize, boolean pendingDelete) {
+        float labelScale = markerSize / (float) MAX_STRUCTURE_MARKER_SIZE;
+        int textWidth = this.font.width(name);
+        int left = Mth.floor(-textWidth / 2.0F - 2.0F);
+        int top = 0;
+        int right = left + textWidth + 4;
+        int bottom = top + this.font.lineHeight + 2;
+
+        guiGraphics.pose().pushPose();
+        guiGraphics.pose().translate(centerX, topY, 0.0F);
+        guiGraphics.pose().scale(labelScale, labelScale, 1.0F);
+        guiGraphics.fill(left, top, right, bottom, pendingDelete ? PENDING_DELETE_LABEL_BACKGROUND_COLOR : 0x88000000);
+        guiGraphics.drawString(this.font, name, left + 2, top + 1, pendingDelete ? PENDING_DELETE_LABEL_COLOR : 0xFFFFFFFF, false);
+        guiGraphics.pose().popPose();
+    }
+
+    private int structureMarkerSize() {
+        return Mth.clamp(Math.round(MAX_STRUCTURE_MARKER_SIZE * Mth.sqrt(Math.min(this.zoom, 1.0F))), MIN_STRUCTURE_MARKER_SIZE, MAX_STRUCTURE_MARKER_SIZE);
+    }
+
+    private void renderStructureMarkersToggle(GuiGraphics guiGraphics, int mouseX, int mouseY) {
+        int left = this.structureMarkersToggleX();
+        int top = this.structureMarkersToggleY();
+        this.renderMarkerToggle(guiGraphics, left, top, this.isMouseOverStructureMarkersToggle(mouseX, mouseY), MapPathConfig.CLIENT.showStructureMarkers() ? "S" : "s");
+    }
+
+    private void renderWaypointsToggle(GuiGraphics guiGraphics, int mouseX, int mouseY) {
+        int left = this.waypointsToggleX();
+        int top = this.waypointsToggleY();
+        this.renderMarkerToggle(guiGraphics, left, top, this.isMouseOverWaypointsToggle(mouseX, mouseY), MapPathConfig.CLIENT.showWaypoints() ? "W" : "w");
+    }
+
+    private void renderMarkerToggle(GuiGraphics guiGraphics, int left, int top, boolean hovered, String label) {
+        int right = left + STRUCTURE_MARKER_TOGGLE_SIZE;
+        int bottom = top + STRUCTURE_MARKER_TOGGLE_SIZE;
+        guiGraphics.fill(left, top, right, bottom, hovered ? TOGGLE_HOVER_COLOR : TOGGLE_BACKGROUND_COLOR);
+        guiGraphics.fill(left, top, right, top + 1, TOGGLE_BORDER_COLOR);
+        guiGraphics.fill(left, bottom - 1, right, bottom, TOGGLE_BORDER_COLOR);
+        guiGraphics.fill(left, top, left + 1, bottom, TOGGLE_BORDER_COLOR);
+        guiGraphics.fill(right - 1, top, right, bottom, TOGGLE_BORDER_COLOR);
+
+        guiGraphics.drawString(
+            this.font,
+            label,
+            left + (STRUCTURE_MARKER_TOGGLE_SIZE - this.font.width(label)) / 2,
+            top + (STRUCTURE_MARKER_TOGGLE_SIZE - this.font.lineHeight) / 2,
+            CONTEXT_MENU_TEXT_COLOR,
+            false
+        );
+    }
+
+    private boolean isMouseOverStructureMarkersToggle(double mouseX, double mouseY) {
+        int left = this.structureMarkersToggleX();
+        int top = this.structureMarkersToggleY();
+        return this.isMouseOverMarkerToggle(mouseX, mouseY, left, top);
+    }
+
+    private boolean isMouseOverWaypointsToggle(double mouseX, double mouseY) {
+        int left = this.waypointsToggleX();
+        int top = this.waypointsToggleY();
+        return this.isMouseOverMarkerToggle(mouseX, mouseY, left, top);
+    }
+
+    private boolean isMouseOverMarkerToggle(double mouseX, double mouseY, int left, int top) {
+        return mouseX >= left
+            && mouseX < left + STRUCTURE_MARKER_TOGGLE_SIZE
+            && mouseY >= top
+            && mouseY < top + STRUCTURE_MARKER_TOGGLE_SIZE;
+    }
+
+    private int structureMarkersToggleX() {
+        return this.width - SCREEN_PADDING - STRUCTURE_MARKER_TOGGLE_SIZE;
+    }
+
+    private int structureMarkersToggleY() {
+        return this.height - SCREEN_PADDING - STRUCTURE_MARKER_TOGGLE_SIZE;
+    }
+
+    private int waypointsToggleX() {
+        return this.structureMarkersToggleX();
+    }
+
+    private int waypointsToggleY() {
+        return this.structureMarkersToggleY() - STRUCTURE_MARKER_TOGGLE_SIZE - MARKER_TOGGLE_GAP;
+    }
+
+    private void openContextMenu(double mouseX, double mouseY) {
+        this.draggingMap = false;
+        this.waypointContextMenuOpen = false;
+        this.structureContextMenuOpen = false;
+        this.contextWorldX = Mth.floor(this.screenToWorldX(mouseX));
+        this.contextWorldZ = Mth.floor(this.screenToWorldZ(mouseY));
+        this.contextMenuX = Mth.clamp((int)mouseX, CONTEXT_MENU_MARGIN, this.width - CONTEXT_MENU_WIDTH - CONTEXT_MENU_MARGIN);
+        this.contextMenuY = Mth.clamp((int)mouseY, CONTEXT_MENU_MARGIN, this.height - contextMenuHeight() - CONTEXT_MENU_MARGIN);
+        this.contextMenuOpen = true;
+    }
+
+    private void openWaypointContextMenu(double mouseX, double mouseY, WaypointStore.Waypoint waypoint) {
+        this.draggingMap = false;
+        this.contextMenuOpen = false;
+        this.structureContextMenuOpen = false;
+        this.waypointContextMenuId = waypoint.id();
+        this.waypointContextMenuX = Mth.clamp((int)mouseX, CONTEXT_MENU_MARGIN, this.width - WAYPOINT_CONTEXT_MENU_WIDTH - CONTEXT_MENU_MARGIN);
+        this.waypointContextMenuY = Mth.clamp((int)mouseY, CONTEXT_MENU_MARGIN, this.height - waypointContextMenuHeight() - CONTEXT_MENU_MARGIN);
+        this.waypointContextMenuOpen = true;
+    }
+
+    private void openStructureContextMenu(double mouseX, double mouseY, StructureMarkerStore.Marker marker) {
+        this.draggingMap = false;
+        this.contextMenuOpen = false;
+        this.waypointContextMenuOpen = false;
+        this.structureContextMenuKey = marker.key();
+        this.structureContextMenuX = Mth.clamp((int)mouseX, CONTEXT_MENU_MARGIN, this.width - STRUCTURE_CONTEXT_MENU_WIDTH - CONTEXT_MENU_MARGIN);
+        this.structureContextMenuY = Mth.clamp((int)mouseY, CONTEXT_MENU_MARGIN, this.height - structureContextMenuHeight() - CONTEXT_MENU_MARGIN);
+        this.structureContextMenuOpen = true;
+    }
+
+    private void renderContextMenu(GuiGraphics guiGraphics, int mouseX, int mouseY) {
+        if (!this.contextMenuOpen) {
+            return;
+        }
+
+        int left = this.contextMenuX;
+        int top = this.contextMenuY;
+        int right = left + CONTEXT_MENU_WIDTH;
+        int bottom = top + contextMenuHeight();
+        guiGraphics.fill(left, top, right, bottom, CONTEXT_MENU_BACKGROUND_COLOR);
+        guiGraphics.fill(left, top, right, top + 1, CONTEXT_MENU_BORDER_COLOR);
+        guiGraphics.fill(left, bottom - 1, right, bottom, CONTEXT_MENU_BORDER_COLOR);
+        guiGraphics.fill(left, top, left + 1, bottom, CONTEXT_MENU_BORDER_COLOR);
+        guiGraphics.fill(right - 1, top, right, bottom, CONTEXT_MENU_BORDER_COLOR);
+        int hoveredItem = this.contextMenuItemAt(mouseX, mouseY);
+        if (hoveredItem >= 0) {
+            int itemTop = top + hoveredItem * CONTEXT_MENU_ITEM_HEIGHT;
+            guiGraphics.fill(left + 1, itemTop + 1, right - 1, itemTop + CONTEXT_MENU_ITEM_HEIGHT - 1, CONTEXT_MENU_HOVER_COLOR);
+        }
+
+        this.renderContextMenuItem(guiGraphics, Component.translatable("gui.mappath.teleport_here"), left, top, 0);
+        this.renderContextMenuItem(guiGraphics, Component.translatable("gui.mappath.create_waypoint"), left, top, 1);
+    }
+
+    private void renderWaypointContextMenu(GuiGraphics guiGraphics, int mouseX, int mouseY) {
+        if (!this.waypointContextMenuOpen) {
+            return;
+        }
+
+        int left = this.waypointContextMenuX;
+        int top = this.waypointContextMenuY;
+        int right = left + WAYPOINT_CONTEXT_MENU_WIDTH;
+        int bottom = top + waypointContextMenuHeight();
+        guiGraphics.fill(left, top, right, bottom, CONTEXT_MENU_BACKGROUND_COLOR);
+        guiGraphics.fill(left, top, right, top + 1, CONTEXT_MENU_BORDER_COLOR);
+        guiGraphics.fill(left, bottom - 1, right, bottom, CONTEXT_MENU_BORDER_COLOR);
+        guiGraphics.fill(left, top, left + 1, bottom, CONTEXT_MENU_BORDER_COLOR);
+        guiGraphics.fill(right - 1, top, right, bottom, CONTEXT_MENU_BORDER_COLOR);
+        int hoveredItem = this.waypointContextMenuItemAt(mouseX, mouseY);
+        if (hoveredItem >= 0) {
+            int itemTop = top + hoveredItem * CONTEXT_MENU_ITEM_HEIGHT;
+            guiGraphics.fill(left + 1, itemTop + 1, right - 1, itemTop + CONTEXT_MENU_ITEM_HEIGHT - 1, CONTEXT_MENU_HOVER_COLOR);
+        }
+
+        if (this.isWaypointPendingDelete(this.waypointContextMenuId)) {
+            this.renderContextMenuItem(guiGraphics, Component.translatable("gui.mappath.delete_waypoint_final"), left, top, 0);
+            this.renderContextMenuItem(guiGraphics, Component.translatable("gui.mappath.restore_waypoint"), left, top, 1);
+        } else {
+            this.renderContextMenuItem(guiGraphics, Component.translatable("gui.mappath.teleport_to_waypoint"), left, top, 0);
+            this.renderContextMenuItem(guiGraphics, Component.translatable("gui.mappath.edit_waypoint"), left, top, 1);
+            WaypointStore.Waypoint waypoint = this.contextWaypoint();
+            String highlightKey = waypoint != null && waypoint.highlighted() ? "gui.mappath.disable_highlight" : "gui.mappath.enable_highlight";
+            this.renderContextMenuItem(guiGraphics, Component.translatable(highlightKey), left, top, 2);
+            this.renderContextMenuItem(guiGraphics, Component.translatable("gui.mappath.delete_waypoint"), left, top, 3);
+        }
+    }
+
+    private void renderStructureContextMenu(GuiGraphics guiGraphics, int mouseX, int mouseY) {
+        if (!this.structureContextMenuOpen) {
+            return;
+        }
+
+        int left = this.structureContextMenuX;
+        int top = this.structureContextMenuY;
+        int right = left + STRUCTURE_CONTEXT_MENU_WIDTH;
+        int bottom = top + structureContextMenuHeight();
+        guiGraphics.fill(left, top, right, bottom, CONTEXT_MENU_BACKGROUND_COLOR);
+        guiGraphics.fill(left, top, right, top + 1, CONTEXT_MENU_BORDER_COLOR);
+        guiGraphics.fill(left, bottom - 1, right, bottom, CONTEXT_MENU_BORDER_COLOR);
+        guiGraphics.fill(left, top, left + 1, bottom, CONTEXT_MENU_BORDER_COLOR);
+        guiGraphics.fill(right - 1, top, right, bottom, CONTEXT_MENU_BORDER_COLOR);
+        int hoveredItem = this.structureContextMenuItemAt(mouseX, mouseY);
+        if (hoveredItem >= 0) {
+            int itemTop = top + hoveredItem * CONTEXT_MENU_ITEM_HEIGHT;
+            guiGraphics.fill(left + 1, itemTop + 1, right - 1, itemTop + CONTEXT_MENU_ITEM_HEIGHT - 1, CONTEXT_MENU_HOVER_COLOR);
+        }
+
+        if (this.isStructureMarkerPendingDelete(this.structureContextMenuKey)) {
+            this.renderContextMenuItem(guiGraphics, Component.translatable("gui.mappath.delete_structure_final"), left, top, 0);
+            this.renderContextMenuItem(guiGraphics, Component.translatable("gui.mappath.restore_structure"), left, top, 1);
+        } else {
+            this.renderContextMenuItem(guiGraphics, Component.translatable("gui.mappath.teleport_to_structure"), left, top, 0);
+            this.renderContextMenuItem(guiGraphics, Component.translatable("gui.mappath.edit_structure"), left, top, 1);
+            StructureMarkerStore.Marker marker = this.contextStructureMarker();
+            String highlightKey = marker != null && marker.highlighted() ? "gui.mappath.disable_highlight" : "gui.mappath.enable_highlight";
+            this.renderContextMenuItem(guiGraphics, Component.translatable(highlightKey), left, top, 2);
+            this.renderContextMenuItem(guiGraphics, Component.translatable("gui.mappath.delete_structure"), left, top, 3);
+        }
+    }
+
+    private void renderContextMenuItem(GuiGraphics guiGraphics, Component label, int left, int top, int index) {
+        guiGraphics.drawString(
+            this.font,
+            label,
+            left + 6,
+            top + index * CONTEXT_MENU_ITEM_HEIGHT + (CONTEXT_MENU_ITEM_HEIGHT - this.font.lineHeight) / 2,
+            CONTEXT_MENU_TEXT_COLOR,
+            false
+        );
+    }
+
+    private int contextMenuItemAt(double mouseX, double mouseY) {
+        if (mouseX < this.contextMenuX
+            || mouseX >= this.contextMenuX + CONTEXT_MENU_WIDTH
+            || mouseY < this.contextMenuY
+            || mouseY >= this.contextMenuY + contextMenuHeight()) {
+            return -1;
+        }
+
+        return Mth.floor((mouseY - this.contextMenuY) / CONTEXT_MENU_ITEM_HEIGHT);
+    }
+
+    private int waypointContextMenuItemAt(double mouseX, double mouseY) {
+        if (mouseX < this.waypointContextMenuX
+            || mouseX >= this.waypointContextMenuX + WAYPOINT_CONTEXT_MENU_WIDTH
+            || mouseY < this.waypointContextMenuY
+            || mouseY >= this.waypointContextMenuY + waypointContextMenuHeight()) {
+            return -1;
+        }
+
+        return Mth.floor((mouseY - this.waypointContextMenuY) / CONTEXT_MENU_ITEM_HEIGHT);
+    }
+
+    private int structureContextMenuItemAt(double mouseX, double mouseY) {
+        if (mouseX < this.structureContextMenuX
+            || mouseX >= this.structureContextMenuX + STRUCTURE_CONTEXT_MENU_WIDTH
+            || mouseY < this.structureContextMenuY
+            || mouseY >= this.structureContextMenuY + structureContextMenuHeight()) {
+            return -1;
+        }
+
+        return Mth.floor((mouseY - this.structureContextMenuY) / CONTEXT_MENU_ITEM_HEIGHT);
+    }
+
+    private static int contextMenuHeight() {
+        return CONTEXT_MENU_ITEM_HEIGHT * CONTEXT_MENU_ITEM_COUNT;
+    }
+
+    private int waypointContextMenuHeight() {
+        return CONTEXT_MENU_ITEM_HEIGHT * (this.isWaypointPendingDelete(this.waypointContextMenuId) ? 2 : WAYPOINT_CONTEXT_MENU_ITEM_COUNT);
+    }
+
+    private int structureContextMenuHeight() {
+        return CONTEXT_MENU_ITEM_HEIGHT * (this.isStructureMarkerPendingDelete(this.structureContextMenuKey) ? 2 : STRUCTURE_CONTEXT_MENU_ITEM_COUNT);
+    }
+
+    private void teleportToContextPosition() {
+        this.worldMapManager.teleportToTopBlock(this.minecraft, this.contextWorldX, this.contextWorldZ);
+        this.onClose();
+    }
+
+    private void openWaypointCreateScreen() {
+        int defaultY = this.worldMapManager.defaultWaypointY(this.minecraft, this.contextWorldX, this.contextWorldZ);
+        if (this.minecraft != null) {
+            this.minecraft.setScreen(new WaypointCreateScreen(this, this.worldMapManager, this.contextWorldX, defaultY, this.contextWorldZ));
+        }
+    }
+
+    private void teleportToWaypointContextPosition() {
+        WaypointStore.Waypoint waypoint = this.contextWaypoint();
+        if (waypoint != null) {
+            this.worldMapManager.teleportToPosition(this.minecraft, waypoint.worldX(), waypoint.worldY(), waypoint.worldZ());
+            this.onClose();
+        }
+    }
+
+    private void openWaypointEditScreen() {
+        WaypointStore.Waypoint waypoint = this.contextWaypoint();
+        if (waypoint != null && this.minecraft != null) {
+            this.minecraft.setScreen(new WaypointCreateScreen(this, this.worldMapManager, waypoint));
+        }
+    }
+
+    private void deleteContextWaypoint() {
+        if (this.waypointContextMenuId != null) {
+            this.deleteWaypoint(this.waypointContextMenuId);
+        }
+    }
+
+    private void markContextWaypointForDeletion() {
+        if (this.waypointContextMenuId != null) {
+            this.pendingDeletedWaypoints.add(this.waypointContextMenuId);
+        }
+    }
+
+    private void restoreContextWaypoint() {
+        if (this.waypointContextMenuId != null) {
+            this.pendingDeletedWaypoints.remove(this.waypointContextMenuId);
+        }
+    }
+
+    private void toggleContextWaypointHighlight() {
+        WaypointStore.Waypoint waypoint = this.contextWaypoint();
+        if (waypoint != null) {
+            this.worldMapManager.setWaypointHighlighted(this.minecraft, waypoint.id(), !waypoint.highlighted());
+        }
+    }
+
+    private WaypointStore.Waypoint contextWaypoint() {
+        return this.waypointContextMenuId == null ? null : this.worldMapManager.waypoint(this.minecraft, this.waypointContextMenuId);
+    }
+
+    private void teleportToStructureContextPosition() {
+        StructureMarkerStore.Marker marker = this.contextStructureMarker();
+        if (marker != null) {
+            this.worldMapManager.teleportToTopBlock(this.minecraft, marker.worldX(), marker.worldZ());
+            this.onClose();
+        }
+    }
+
+    private void openStructureEditScreen() {
+        StructureMarkerStore.Marker marker = this.contextStructureMarker();
+        if (marker != null && this.minecraft != null) {
+            this.minecraft.setScreen(new StructureMarkerEditScreen(this, this.worldMapManager, marker));
+        }
+    }
+
+    private void deleteContextStructure() {
+        if (this.structureContextMenuKey != null) {
+            this.deleteStructureMarker(this.structureContextMenuKey);
+        }
+    }
+
+    private void markContextStructureForDeletion() {
+        if (this.structureContextMenuKey != null) {
+            this.pendingDeletedStructureMarkers.add(this.structureContextMenuKey);
+        }
+    }
+
+    private void restoreContextStructure() {
+        if (this.structureContextMenuKey != null) {
+            this.pendingDeletedStructureMarkers.remove(this.structureContextMenuKey);
+        }
+    }
+
+    private void toggleContextStructureHighlight() {
+        StructureMarkerStore.Marker marker = this.contextStructureMarker();
+        if (marker != null) {
+            this.worldMapManager.setStructureMarkerHighlighted(this.minecraft, marker.key(), !marker.highlighted());
+        }
+    }
+
+    private StructureMarkerStore.Marker contextStructureMarker() {
+        return this.structureContextMenuKey == null ? null : this.worldMapManager.structureMarker(this.minecraft, this.structureContextMenuKey);
+    }
+
+    private void deleteWaypoint(UUID id) {
+        this.pendingDeletedWaypoints.remove(id);
+        this.worldMapManager.deleteWaypoint(this.minecraft, id);
+    }
+
+    private void deleteStructureMarker(String key) {
+        this.pendingDeletedStructureMarkers.remove(key);
+        this.worldMapManager.deleteStructureMarker(this.minecraft, key);
+    }
+
+    private boolean isWaypointPendingDelete(UUID id) {
+        return id != null && this.pendingDeletedWaypoints.contains(id);
+    }
+
+    private boolean isStructureMarkerPendingDelete(String key) {
+        return key != null && this.pendingDeletedStructureMarkers.contains(key);
+    }
+
+    private void closeAllContextMenus() {
+        this.contextMenuOpen = false;
+        this.waypointContextMenuOpen = false;
+        this.structureContextMenuOpen = false;
+    }
+
+    private WaypointStore.Waypoint waypointAt(double mouseX, double mouseY) {
+        if (!MapPathConfig.CLIENT.showWaypoints()) {
+            return null;
+        }
+
+        int markerSize = this.structureMarkerSize();
+        float hitRadius = Math.max(6.0F, markerSize / 2.0F + 2.0F);
+        WaypointStore.Waypoint nearestWaypoint = null;
+        double nearestDistanceSquared = Double.MAX_VALUE;
+        for (WaypointStore.Waypoint waypoint : this.worldMapManager.waypoints(this.minecraft)) {
+            float markerCenterX = this.worldToScreenX(waypoint.worldX());
+            float markerCenterY = this.worldToScreenY(waypoint.worldZ());
+            double deltaX = mouseX - markerCenterX;
+            double deltaY = mouseY - markerCenterY;
+            if (Math.abs(deltaX) > hitRadius || Math.abs(deltaY) > hitRadius) {
+                continue;
+            }
+
+            double distanceSquared = deltaX * deltaX + deltaY * deltaY;
+            if (distanceSquared < nearestDistanceSquared) {
+                nearestDistanceSquared = distanceSquared;
+                nearestWaypoint = waypoint;
+            }
+        }
+
+        return nearestWaypoint;
+    }
+
+    private StructureMarkerStore.Marker structureMarkerAt(double mouseX, double mouseY) {
+        if (!MapPathConfig.CLIENT.showStructureMarkers()) {
+            return null;
+        }
+
+        int markerSize = this.structureMarkerSize();
+        float hitRadius = Math.max(6.0F, markerSize / 2.0F + 2.0F);
+        StructureMarkerStore.Marker nearestMarker = null;
+        double nearestDistanceSquared = Double.MAX_VALUE;
+        for (StructureMarkerStore.Marker marker : this.worldMapManager.structureMarkers(this.minecraft)) {
+            float markerCenterX = this.worldToScreenX(marker.worldX());
+            float markerCenterY = this.worldToScreenY(marker.worldZ());
+            double deltaX = mouseX - markerCenterX;
+            double deltaY = mouseY - markerCenterY;
+            if (Math.abs(deltaX) > hitRadius || Math.abs(deltaY) > hitRadius) {
+                continue;
+            }
+
+            double distanceSquared = deltaX * deltaX + deltaY * deltaY;
+            if (distanceSquared < nearestDistanceSquared) {
+                nearestDistanceSquared = distanceSquared;
+                nearestMarker = marker;
+            }
+        }
+
+        return nearestMarker;
+    }
+
     private void changeZoom(double mouseX, double mouseY, double scrollY) {
         boolean zoomingOnMap = this.isMouseOverMap(mouseX, mouseY);
         double anchorWorldX = zoomingOnMap ? this.screenToWorldX(mouseX) : 0.0D;
@@ -259,7 +985,6 @@ public final class WorldMapScreen extends Screen {
             this.centerWorldX = anchorWorldX - screenOffsetX / this.screenPixelsPerBlock();
             this.centerWorldZ = anchorWorldZ - screenOffsetY / this.screenPixelsPerBlock();
         }
-        this.pendingZoomRefreshTicks = ZOOM_REFRESH_DELAY_TICKS;
     }
 
     private void panMap(double screenDeltaX, double screenDeltaY) {
@@ -267,39 +992,8 @@ public final class WorldMapScreen extends Screen {
             return;
         }
 
-        double screenPixelsToBlocks = SurfaceMapTexture.MAP_SIZE / (double) this.mapSize * this.currentBlocksPerPixel();
-        this.centerWorldX -= screenDeltaX * screenPixelsToBlocks;
-        this.centerWorldZ -= screenDeltaY * screenPixelsToBlocks;
-    }
-
-    private void renderHoveredChunk(GuiGraphics guiGraphics, int mouseX, int mouseY) {
-        if (!this.isMouseOverMap(mouseX, mouseY)) {
-            return;
-        }
-
-        int worldX = Mth.floor(this.screenToWorldX(mouseX));
-        int worldZ = Mth.floor(this.screenToWorldZ(mouseY));
-        int chunkStartX = Math.floorDiv(worldX, CHUNK_SIZE) * CHUNK_SIZE;
-        int chunkStartZ = Math.floorDiv(worldZ, CHUNK_SIZE) * CHUNK_SIZE;
-
-        float chunkScreenSize = (float)(CHUNK_SIZE * this.screenPixelsPerBlock());
-        if (chunkScreenSize < MIN_HOVERED_CHUNK_SCREEN_SIZE) {
-            return;
-        }
-
-        int size = Math.max(1, Math.round(chunkScreenSize));
-        int left = Math.round(this.worldToScreenX(chunkStartX + CHUNK_SIZE / 2.0D) - size / 2.0F);
-        int top = Math.round(this.worldToScreenY(chunkStartZ + CHUNK_SIZE / 2.0D) - size / 2.0F);
-        int right = left + size;
-        int bottom = top + size;
-
-        guiGraphics.enableScissor(0, 0, this.width, this.height);
-        guiGraphics.fill(left, top, right, bottom, HOVERED_CHUNK_FILL_COLOR);
-        guiGraphics.fill(left, top, right, top + 1, HOVERED_CHUNK_BORDER_COLOR);
-        guiGraphics.fill(left, bottom - 1, right, bottom, HOVERED_CHUNK_BORDER_COLOR);
-        guiGraphics.fill(left, top, left + 1, bottom, HOVERED_CHUNK_BORDER_COLOR);
-        guiGraphics.fill(right - 1, top, right, bottom, HOVERED_CHUNK_BORDER_COLOR);
-        guiGraphics.disableScissor();
+        this.centerWorldX -= screenDeltaX / this.screenPixelsPerBlock();
+        this.centerWorldZ -= screenDeltaY / this.screenPixelsPerBlock();
     }
 
     private float worldToScreenX(double worldX) {
@@ -311,7 +1005,7 @@ public final class WorldMapScreen extends Screen {
     }
 
     private double screenPixelsPerBlock() {
-        return this.mapSize / (SurfaceMapTexture.MAP_SIZE * (double) this.currentBlocksPerPixel());
+        return this.zoom;
     }
 
     private double screenToWorldX(double screenX) {
@@ -320,19 +1014,6 @@ public final class WorldMapScreen extends Screen {
 
     private double screenToWorldZ(double screenY) {
         return this.centerWorldZ + (screenY - this.mapY - this.mapSize / 2.0D) / this.screenPixelsPerBlock();
-    }
-
-    private float currentBlocksPerPixel() {
-        return 1.0F / this.zoom;
-    }
-
-    private void refreshMapTexture() {
-        if (this.mapTexture == null) {
-            return;
-        }
-
-        this.mapTexture.refresh(this.minecraft, this.currentBlocksPerPixel(), this.centerWorldX, this.centerWorldZ, this.mapSize);
-        this.observedStoreRevision = this.worldMapManager.storeRevision(this.minecraft);
     }
 
     private String getZoomLabel() {
@@ -347,5 +1028,23 @@ public final class WorldMapScreen extends Screen {
         }
 
         return String.format(Locale.ROOT, "x%.5f", this.zoom);
+    }
+
+    private static Map<StructureMarkerType, ResourceLocation> createStructureMarkerTextures() {
+        Map<StructureMarkerType, ResourceLocation> textures = new EnumMap<>(StructureMarkerType.class);
+        for (StructureMarkerType type : StructureMarkerType.values()) {
+            textures.put(type, ResourceLocation.fromNamespaceAndPath(MapPath.MODID, type.texturePath()));
+        }
+
+        return textures;
+    }
+
+    private static Map<BannerIconType, ResourceLocation> createBannerIconTextures() {
+        Map<BannerIconType, ResourceLocation> textures = new EnumMap<>(BannerIconType.class);
+        for (BannerIconType type : BannerIconType.values()) {
+            textures.put(type, ResourceLocation.fromNamespaceAndPath(MapPath.MODID, type.texturePath()));
+        }
+
+        return textures;
     }
 }

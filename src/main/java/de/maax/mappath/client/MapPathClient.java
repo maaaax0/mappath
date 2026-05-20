@@ -17,6 +17,8 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
+import net.neoforged.neoforge.client.event.RenderGuiEvent;
+import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 import net.neoforged.neoforge.client.event.ScreenEvent;
 import net.neoforged.neoforge.event.level.ChunkEvent;
 import org.lwjgl.glfw.GLFW;
@@ -66,6 +68,16 @@ public final class MapPathClient {
     }
 
     @SubscribeEvent
+    public static void onRenderLevelStage(RenderLevelStageEvent event) {
+        HighlightedTargetRenderer.render(event, WORLD_MAP_MANAGER);
+    }
+
+    @SubscribeEvent
+    public static void onRenderGui(RenderGuiEvent.Post event) {
+        HighlightedTargetRenderer.renderGui(event);
+    }
+
+    @SubscribeEvent
     public static void onScreenInit(ScreenEvent.Init.Post event) {
         if (event.getScreen() instanceof InventoryScreen inventoryScreen) {
             event.addListener(new InventoryMapButton(inventoryScreen));
@@ -82,6 +94,10 @@ public final class MapPathClient {
         } else {
             minecraft.setScreen(new WorldMapScreen(WORLD_MAP_MANAGER));
         }
+    }
+
+    static WorldMapManager worldMapManager() {
+        return WORLD_MAP_MANAGER;
     }
 
     private static final class InventoryMapButton extends ImageButton {
