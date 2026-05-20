@@ -1,0 +1,12 @@
+{
+  "key.categories.mappath": "MapPath",
+  "key.mappath.open_world_map": "Weltkarte oeffnen",
+  "screen.mappath.world_map": "Weltkarte",
+  "gui.mappath.open_map": "Weltkarte oeffnen",
+  "gui.mappath.refresh": "Aktualisieren",
+  "gui.mappath.zoom": "Zoom %s",
+  "gui.mappath.move_mouse": "Bewege die Maus ueber die Karte",
+  "gui.mappath.cursor_position": "Cursor: X %s / Z %s",
+  "mappath.configuration.liveRefreshRadius": "Live-Aktualisierungsradius",
+  "mappath.configuration.liveRefreshRadius.tooltip": "Wenn groesser als 0, wird die Karte im Umkreis regelmaessig aktualisiert."
+}

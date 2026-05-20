@@ -1,0 +1,12 @@
+{
+  "key.categories.mappath": "MapPath",
+  "key.mappath.open_world_map": "Open World Map",
+  "screen.mappath.world_map": "World Map",
+  "gui.mappath.open_map": "Open World Map",
+  "gui.mappath.refresh": "Refresh",
+  "gui.mappath.zoom": "Zoom %s",
+  "gui.mappath.move_mouse": "Move the mouse over the map",
+  "gui.mappath.cursor_position": "Cursor: X %s / Z %s",
+  "mappath.configuration.liveRefreshRadius": "Live update radius",
+  "mappath.configuration.liveRefreshRadius.tooltip": "If greater than 0, updates the map around the player regularly."
+}
