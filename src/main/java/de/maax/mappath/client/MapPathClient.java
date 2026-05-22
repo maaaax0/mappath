@@ -131,6 +131,7 @@ public final class MapPathClient {
 
     @SubscribeEvent
     public static void onRenderGui(RenderGuiEvent.Post event) {
+        MinimapRenderer.render(event, WORLD_MAP_MANAGER);
         HighlightedTargetRenderer.renderGui(event);
         RouteVisualizerRenderer.renderGui(event, WORLD_MAP_MANAGER);
     }

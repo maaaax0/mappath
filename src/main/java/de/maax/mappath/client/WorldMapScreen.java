@@ -190,6 +190,7 @@ public final class WorldMapScreen extends Screen {
         this.renderContextMenu(guiGraphics, mouseX, mouseY);
         this.renderWaypointContextMenu(guiGraphics, mouseX, mouseY);
         this.renderStructureContextMenu(guiGraphics, mouseX, mouseY);
+        this.renderMinimapToggle(guiGraphics, mouseX, mouseY);
         this.renderBetaFeaturesToggle(guiGraphics, mouseX, mouseY);
         this.renderWaypointsToggle(guiGraphics, mouseX, mouseY);
         this.renderStructureMarkersToggle(guiGraphics, mouseX, mouseY);
@@ -241,6 +242,11 @@ public final class WorldMapScreen extends Screen {
         if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && this.isMouseOverBetaFeaturesToggle(mouseX, mouseY)) {
             this.closeAllContextMenus();
             MapPathConfig.CLIENT.setShowBetaFeatures(!MapPathConfig.CLIENT.showBetaFeatures());
+            return true;
+        }
+        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && this.isMouseOverMinimapToggle(mouseX, mouseY)) {
+            this.closeAllContextMenus();
+            MapPathConfig.CLIENT.setShowMinimap(!MapPathConfig.CLIENT.showMinimap());
             return true;
         }
         if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && this.isMouseOverStructureMarkersToggle(mouseX, mouseY)) {
@@ -629,6 +635,12 @@ public final class WorldMapScreen extends Screen {
         this.renderMarkerToggle(guiGraphics, left, top, this.isMouseOverBetaFeaturesToggle(mouseX, mouseY), MapPathConfig.CLIENT.showBetaFeatures() ? "B" : "b");
     }
 
+    private void renderMinimapToggle(GuiGraphics guiGraphics, int mouseX, int mouseY) {
+        int left = this.minimapToggleX();
+        int top = this.minimapToggleY();
+        this.renderMarkerToggle(guiGraphics, left, top, this.isMouseOverMinimapToggle(mouseX, mouseY), MapPathConfig.CLIENT.showMinimap() ? "M" : "m");
+    }
+
     private void renderMarkerToggle(GuiGraphics guiGraphics, int left, int top, boolean hovered, String label) {
         int right = left + STRUCTURE_MARKER_TOGGLE_SIZE;
         int bottom = top + STRUCTURE_MARKER_TOGGLE_SIZE;
@@ -666,6 +678,12 @@ public final class WorldMapScreen extends Screen {
         return this.isMouseOverMarkerToggle(mouseX, mouseY, left, top);
     }
 
+    private boolean isMouseOverMinimapToggle(double mouseX, double mouseY) {
+        int left = this.minimapToggleX();
+        int top = this.minimapToggleY();
+        return this.isMouseOverMarkerToggle(mouseX, mouseY, left, top);
+    }
+
     private boolean isMouseOverMarkerToggle(double mouseX, double mouseY, int left, int top) {
         return mouseX >= left
             && mouseX < left + STRUCTURE_MARKER_TOGGLE_SIZE
@@ -695,6 +713,14 @@ public final class WorldMapScreen extends Screen {
 
     private int betaFeaturesToggleY() {
         return this.waypointsToggleY() - STRUCTURE_MARKER_TOGGLE_SIZE - MARKER_TOGGLE_GAP;
+    }
+
+    private int minimapToggleX() {
+        return this.structureMarkersToggleX();
+    }
+
+    private int minimapToggleY() {
+        return this.betaFeaturesToggleY() - STRUCTURE_MARKER_TOGGLE_SIZE - MARKER_TOGGLE_GAP;
     }
 
     private void openContextMenu(double mouseX, double mouseY) {

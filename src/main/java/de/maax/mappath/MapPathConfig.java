@@ -16,6 +16,9 @@ public final class MapPathConfig {
     public static final boolean DEFAULT_SHOW_STRUCTURE_MARKERS = true;
     public static final boolean DEFAULT_SHOW_WAYPOINTS = true;
     public static final boolean DEFAULT_SHOW_BETA_FEATURES = false;
+    public static final boolean DEFAULT_SHOW_MINIMAP = true;
+    public static final int DEFAULT_MINIMAP_SIZE = 128;
+    public static final int DEFAULT_MINIMAP_BLOCKS_PER_PIXEL = 2;
     public static final boolean DEFAULT_SHOW_ROUTE_VISUALIZER = true;
     public static final boolean DEFAULT_SHOW_ROUTE_TARGET_MARKER = false;
     public static final int DEFAULT_ROUTE_TRAIL_MAX_SPEED = 6;
@@ -46,6 +49,9 @@ public final class MapPathConfig {
         private final ModConfigSpec.BooleanValue showStructureMarkers;
         private final ModConfigSpec.BooleanValue showWaypoints;
         private final ModConfigSpec.BooleanValue showBetaFeatures;
+        private final ModConfigSpec.BooleanValue showMinimap;
+        private final ModConfigSpec.IntValue minimapSize;
+        private final ModConfigSpec.IntValue minimapBlocksPerPixel;
         private final ModConfigSpec.BooleanValue showRouteVisualizer;
         private final ModConfigSpec.BooleanValue showRouteTargetMarker;
         private final ModConfigSpec.IntValue routeTrailMaxSpeed;
@@ -100,6 +106,18 @@ public final class MapPathConfig {
                 .comment("Enables beta features on the world map.")
                 .translation("mappath.configuration.showBetaFeatures")
                 .define("showBetaFeatures", DEFAULT_SHOW_BETA_FEATURES);
+            this.showMinimap = builder
+                .comment("Shows a small minimap in the top-right HUD.")
+                .translation("mappath.configuration.showMinimap")
+                .define("showMinimap", DEFAULT_SHOW_MINIMAP);
+            this.minimapSize = builder
+                .comment("Minimap size in HUD pixels.")
+                .translation("mappath.configuration.minimapSize")
+                .defineInRange("minimapSize", DEFAULT_MINIMAP_SIZE, 64, 256);
+            this.minimapBlocksPerPixel = builder
+                .comment("Minimap zoom level. Higher values show more blocks with less detail.")
+                .translation("mappath.configuration.minimapBlocksPerPixel")
+                .defineInRange("minimapBlocksPerPixel", DEFAULT_MINIMAP_BLOCKS_PER_PIXEL, 1, 8);
             this.showRouteVisualizer = builder
                 .comment("Shows the active client-side route visualizer in the world and HUD.")
                 .translation("mappath.configuration.showRouteVisualizer")
@@ -166,6 +184,18 @@ public final class MapPathConfig {
             return this.showBetaFeatures.get();
         }
 
+        public boolean showMinimap() {
+            return this.showMinimap.get();
+        }
+
+        public int minimapSize() {
+            return this.minimapSize.get();
+        }
+
+        public int minimapBlocksPerPixel() {
+            return this.minimapBlocksPerPixel.get();
+        }
+
         public boolean showRouteVisualizer() {
             return this.showRouteVisualizer.get();
         }
@@ -199,6 +229,11 @@ public final class MapPathConfig {
         public void setShowBetaFeatures(boolean showBetaFeatures) {
             this.showBetaFeatures.set(showBetaFeatures);
             this.showBetaFeatures.save();
+        }
+
+        public void setShowMinimap(boolean showMinimap) {
+            this.showMinimap.set(showMinimap);
+            this.showMinimap.save();
         }
     }
 }
