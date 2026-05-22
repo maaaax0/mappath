@@ -6,8 +6,10 @@ import de.maax.mappath.BannerIconType;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.Collection;
 import java.util.List;
@@ -31,6 +33,7 @@ final class WorldMapManager {
     private SurfaceMapAtlas mapAtlas;
     private final StructureMarkerStore structureMarkerStore = new StructureMarkerStore();
     private final WaypointStore waypointStore = new WaypointStore();
+    private final RouteNavigationManager routeNavigationManager = new RouteNavigationManager();
     private final Queue<PendingChunkRefresh> chunksPendingRefresh = new ArrayDeque<>();
     private final Set<String> queuedChunkRefreshes = new HashSet<>();
     private int liveRefreshStripOffset;
@@ -82,6 +85,7 @@ final class WorldMapManager {
             return;
         }
 
+        this.routeNavigationManager.tick(minecraft, this);
         MapTileStore store = this.getTileStore(minecraft);
         if (store == null) {
             return;
@@ -122,6 +126,7 @@ final class WorldMapManager {
         this.queuedChunkRefreshes.clear();
         this.structureMarkerStore.close();
         this.waypointStore.close();
+        this.routeNavigationManager.cancelRoute();
     }
 
     long storeRevision(Minecraft minecraft) {
@@ -158,6 +163,81 @@ final class WorldMapManager {
         }
 
         MapPathNetworking.sendTeleportPosition(worldX, worldY, worldZ);
+    }
+
+    void startRouteToPosition(Minecraft minecraft, String label, int worldX, int worldY, int worldZ, RouteTarget.Type type) {
+        this.routeNavigationManager.startRouteToPosition(minecraft, this, label, worldX, worldY, worldZ, type);
+    }
+
+    void startRouteToStructure(Minecraft minecraft, String label, StructureMarkerStore.Marker marker, int worldY) {
+        this.routeNavigationManager.startRouteToStructure(
+            minecraft,
+            this,
+            label,
+            marker.worldX(),
+            worldY,
+            marker.worldZ(),
+            marker.minWorldX(),
+            marker.minWorldY(),
+            marker.minWorldZ(),
+            marker.maxWorldX(),
+            marker.maxWorldY(),
+            marker.maxWorldZ()
+        );
+    }
+
+    void cancelRoute(Minecraft minecraft) {
+        this.routeNavigationManager.cancelRoute(minecraft);
+    }
+
+    void spawnStraightRouteTrail(Minecraft minecraft, int lengthBlocks, double heightBlocks) {
+        if (minecraft == null || minecraft.level == null || minecraft.player == null) {
+            return;
+        }
+
+        int length = Mth.clamp(lengthBlocks, 1, 64);
+        double height = Mth.clamp(heightBlocks, 0.0D, 32.0D);
+        Vec3 direction = minecraft.player.getLookAngle();
+        Vec3 horizontalDirection = new Vec3(direction.x, 0.0D, direction.z);
+        if (horizontalDirection.lengthSqr() <= 0.0001D) {
+            horizontalDirection = new Vec3(0.0D, 0.0D, 1.0D);
+        } else {
+            horizontalDirection = horizontalDirection.normalize();
+        }
+
+        double startX = minecraft.player.getX() + horizontalDirection.x * 2.0D;
+        double startZ = minecraft.player.getZ() + horizontalDirection.z * 2.0D;
+        int routeY = Mth.floor(minecraft.player.getEyeY() + height - RouteVisualizerRenderer.TRAIL_Y_OFFSET);
+        double renderY = routeY + RouteVisualizerRenderer.TRAIL_Y_OFFSET;
+        Vec3 fixedPulseStart = new Vec3(startX, renderY, startZ);
+
+        int endX = Mth.floor(startX + horizontalDirection.x * length);
+        int endZ = Mth.floor(startZ + horizontalDirection.z * length);
+        RouteTarget target = RouteTarget.point(
+            RouteTarget.Type.WAYPOINT,
+            "Spawned Trail",
+            minecraft.level.dimension().location(),
+            endX,
+            routeY,
+            endZ,
+            1.0D
+        );
+        ActiveRoute route = new ActiveRoute(
+            target,
+            List.of(new RoutePoint(Mth.floor(startX), routeY, Mth.floor(startZ)), new RoutePoint(endX, routeY, endZ)),
+            false,
+            false,
+            fixedPulseStart
+        );
+        this.routeNavigationManager.setManualRoute(minecraft, route, Component.literal("Route trail spawned"));
+    }
+
+    boolean hasActiveRoute() {
+        return this.routeNavigationManager.hasActiveRoute();
+    }
+
+    ActiveRoute activeRoute() {
+        return this.routeNavigationManager.activeRoute();
     }
 
     Collection<StructureMarkerStore.Marker> structureMarkers(Minecraft minecraft) {

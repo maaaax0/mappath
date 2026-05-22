@@ -20,7 +20,6 @@ import java.util.Set;
 public final class StructureMarkerServerTracker {
     private static final int SCAN_INTERVAL_TICKS = 20;
     private static final int SCAN_RADIUS_CHUNKS = 3;
-    private static final int VERTICAL_DISCOVERY_RANGE_BLOCKS = 16;
     private static int tickCounter;
 
     private StructureMarkerServerTracker() {
@@ -86,7 +85,7 @@ public final class StructureMarkerServerTracker {
         }
 
         BoundingBox bounds = start.getBoundingBox();
-        if (!isPlayerNearStructureHeight(player, bounds)) {
+        if (!bounds.isInside(player.blockPosition())) {
             return;
         }
 
@@ -95,13 +94,19 @@ public final class StructureMarkerServerTracker {
         int centerZ = bounds.getCenter().getZ();
         String markerKey = markerType.id() + ":" + centerX + ":" + centerZ;
         if (markerKeys.add(markerKey)) {
-            markers.add(new MapPathNetworking.StructureMarker(markerType.id(), centerX, centerY, centerZ));
+            markers.add(new MapPathNetworking.StructureMarker(
+                markerType.id(),
+                centerX,
+                centerY,
+                centerZ,
+                bounds.minX(),
+                bounds.minY(),
+                bounds.minZ(),
+                bounds.maxX(),
+                bounds.maxY(),
+                bounds.maxZ()
+            ));
         }
     }
 
-    private static boolean isPlayerNearStructureHeight(ServerPlayer player, BoundingBox bounds) {
-        int playerY = player.blockPosition().getY();
-        return playerY >= bounds.minY() - VERTICAL_DISCOVERY_RANGE_BLOCKS
-            && playerY <= bounds.maxY() + VERTICAL_DISCOVERY_RANGE_BLOCKS;
-    }
 }

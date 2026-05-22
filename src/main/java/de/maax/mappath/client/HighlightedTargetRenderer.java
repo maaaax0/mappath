@@ -19,6 +19,8 @@ import java.util.Locale;
 
 final class HighlightedTargetRenderer {
     private static final double HIDE_DISTANCE_BLOCKS = 5.0D;
+    private static final double FADE_START_DISTANCE_BLOCKS = 64.0D;
+    private static final double FADE_END_DISTANCE_BLOCKS = 512.0D;
     private static final double WAYPOINT_LABEL_Y_OFFSET = 1.5D;
     private static final double STRUCTURE_LABEL_Y_OFFSET = 1.5D;
     private static final int ICON_SIZE = 14;
@@ -28,6 +30,10 @@ final class HighlightedTargetRenderer {
     private static final int TEXT_ROW_GAP = 1;
     private static final int TEXT_COLOR = 0xFFFFFFFF;
     private static final int TEXT_BACKGROUND_COLOR = 0x88000000;
+    private static final float MAX_DISTANCE_SCALE = 0.85F;
+    private static final float MIN_DISTANCE_SCALE = 0.45F;
+    private static final float MIN_GUI_SCALE_ADJUSTED_MAX_SCALE = 0.65F;
+    private static final float GUI_SCALE_SIZE_STEP = 0.06F;
     private static final List<ProjectedLabel> PROJECTED_LABELS = new ArrayList<>();
 
     private HighlightedTargetRenderer() {
@@ -134,18 +140,26 @@ final class HighlightedTargetRenderer {
             return;
         }
 
-        String distanceLabel = String.format(Locale.GERMANY, "%.1f m", Math.sqrt(distance));
+        double blockDistance = Math.sqrt(distance);
+        float distanceFade = distanceFade(blockDistance);
+        float scale = Mth.lerp(distanceFade, maxScale(minecraft), MIN_DISTANCE_SCALE);
+        String distanceLabel = String.format(Locale.GERMANY, "%.1f m", blockDistance);
         float screenX = (normalizedX * 0.5F + 0.5F) * minecraft.getWindow().getGuiScaledWidth();
         float screenY = (0.5F - normalizedY * 0.5F) * minecraft.getWindow().getGuiScaledHeight();
-        PROJECTED_LABELS.add(new ProjectedLabel(Component.literal(name), Component.literal(distanceLabel), iconTexture, screenX, screenY));
+        PROJECTED_LABELS.add(new ProjectedLabel(Component.literal(name), Component.literal(distanceLabel), iconTexture, screenX, screenY, scale));
     }
 
     private static void renderProjectedLabel(Minecraft minecraft, GuiGraphics guiGraphics, ProjectedLabel label) {
-        int top = Mth.floor(label.screenY());
+        int top = 0;
+
+        guiGraphics.pose().pushPose();
+        guiGraphics.pose().translate(label.screenX(), label.screenY(), 0.0F);
+        guiGraphics.pose().scale(label.scale(), label.scale(), 1.0F);
+
         if (label.iconTexture() != null) {
             guiGraphics.blit(
                 label.iconTexture(),
-                Mth.floor(label.screenX() - ICON_SIZE / 2.0F),
+                Mth.floor(-ICON_SIZE / 2.0F),
                 top,
                 ICON_SIZE,
                 ICON_SIZE,
@@ -160,17 +174,35 @@ final class HighlightedTargetRenderer {
 
         int nameTop = top + (label.iconTexture() == null ? 0 : ICON_SIZE + ICON_GAP);
         int distanceTop = nameTop + minecraft.font.lineHeight + TEXT_PADDING_Y * 2 + TEXT_ROW_GAP;
-        renderTextRow(minecraft, guiGraphics, label.name(), label.screenX(), nameTop);
-        renderTextRow(minecraft, guiGraphics, label.distance(), label.screenX(), distanceTop);
+        renderTextRow(minecraft, guiGraphics, label.name(), nameTop);
+        renderTextRow(minecraft, guiGraphics, label.distance(), distanceTop);
+        guiGraphics.pose().popPose();
     }
 
-    private static void renderTextRow(Minecraft minecraft, GuiGraphics guiGraphics, Component text, float centerX, int top) {
+    private static void renderTextRow(Minecraft minecraft, GuiGraphics guiGraphics, Component text, int top) {
         int textWidth = minecraft.font.width(text);
-        int left = Mth.floor(centerX - textWidth / 2.0F) - TEXT_PADDING_X;
+        int left = Mth.floor(-textWidth / 2.0F) - TEXT_PADDING_X;
         int right = left + textWidth + TEXT_PADDING_X * 2;
         int bottom = top + minecraft.font.lineHeight + TEXT_PADDING_Y * 2;
         guiGraphics.fill(left, top, right, bottom, TEXT_BACKGROUND_COLOR);
         guiGraphics.drawString(minecraft.font, text, left + TEXT_PADDING_X, top + TEXT_PADDING_Y, TEXT_COLOR, true);
+    }
+
+    private static float distanceFade(double distance) {
+        if (distance <= FADE_START_DISTANCE_BLOCKS) {
+            return 0.0F;
+        }
+        if (distance >= FADE_END_DISTANCE_BLOCKS) {
+            return 1.0F;
+        }
+
+        return (float)((distance - FADE_START_DISTANCE_BLOCKS) / (FADE_END_DISTANCE_BLOCKS - FADE_START_DISTANCE_BLOCKS));
+    }
+
+    private static float maxScale(Minecraft minecraft) {
+        double guiScale = minecraft.getWindow().getGuiScale();
+        float guiScaleReduction = (float)Math.max(0.0D, guiScale - 1.0D) * GUI_SCALE_SIZE_STEP;
+        return Mth.clamp(MAX_DISTANCE_SCALE - guiScaleReduction, MIN_GUI_SCALE_ADJUSTED_MAX_SCALE, MAX_DISTANCE_SCALE);
     }
 
     private static ResourceLocation bannerTexture(BannerIconType icon) {
@@ -204,6 +236,6 @@ final class HighlightedTargetRenderer {
         return label.toString();
     }
 
-    private record ProjectedLabel(Component name, Component distance, ResourceLocation iconTexture, float screenX, float screenY) {
+    private record ProjectedLabel(Component name, Component distance, ResourceLocation iconTexture, float screenX, float screenY, float scale) {
     }
 }

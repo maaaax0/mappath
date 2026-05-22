@@ -7,6 +7,7 @@ import de.maax.mappath.StructureMarkerType;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.server.IntegratedServer;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
@@ -29,13 +30,13 @@ public final class WorldMapScreen extends Screen {
     private static final int STRUCTURE_MARKER_TEXTURE_SIZE = 64;
     private static final int STRUCTURE_MARKER_TOGGLE_SIZE = 20;
     private static final int MARKER_TOGGLE_GAP = 4;
-    private static final int CONTEXT_MENU_WIDTH = 110;
+    private static final int CONTEXT_MENU_WIDTH = 150;
     private static final int CONTEXT_MENU_ITEM_HEIGHT = 18;
-    private static final int CONTEXT_MENU_ITEM_COUNT = 2;
-    private static final int WAYPOINT_CONTEXT_MENU_ITEM_COUNT = 4;
-    private static final int WAYPOINT_CONTEXT_MENU_WIDTH = 150;
-    private static final int STRUCTURE_CONTEXT_MENU_ITEM_COUNT = 4;
-    private static final int STRUCTURE_CONTEXT_MENU_WIDTH = 150;
+    private static final int CONTEXT_MENU_ITEM_COUNT = 3;
+    private static final int WAYPOINT_CONTEXT_MENU_ITEM_COUNT = 5;
+    private static final int WAYPOINT_CONTEXT_MENU_WIDTH = 170;
+    private static final int STRUCTURE_CONTEXT_MENU_ITEM_COUNT = 5;
+    private static final int STRUCTURE_CONTEXT_MENU_WIDTH = 170;
     private static final int CONTEXT_MENU_MARGIN = 4;
     private static final int UNEXPLORED_MAP_COLOR = 0xFF111417;
     private static final int CONTEXT_MENU_BACKGROUND_COLOR = 0xEE16191D;
@@ -189,6 +190,7 @@ public final class WorldMapScreen extends Screen {
         this.renderContextMenu(guiGraphics, mouseX, mouseY);
         this.renderWaypointContextMenu(guiGraphics, mouseX, mouseY);
         this.renderStructureContextMenu(guiGraphics, mouseX, mouseY);
+        this.renderBetaFeaturesToggle(guiGraphics, mouseX, mouseY);
         this.renderWaypointsToggle(guiGraphics, mouseX, mouseY);
         this.renderStructureMarkersToggle(guiGraphics, mouseX, mouseY);
     }
@@ -236,6 +238,11 @@ public final class WorldMapScreen extends Screen {
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         this.currentMouseX = mouseX;
         this.currentMouseY = mouseY;
+        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && this.isMouseOverBetaFeaturesToggle(mouseX, mouseY)) {
+            this.closeAllContextMenus();
+            MapPathConfig.CLIENT.setShowBetaFeatures(!MapPathConfig.CLIENT.showBetaFeatures());
+            return true;
+        }
         if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && this.isMouseOverStructureMarkersToggle(mouseX, mouseY)) {
             this.closeAllContextMenus();
             MapPathConfig.CLIENT.setShowStructureMarkers(!MapPathConfig.CLIENT.showStructureMarkers());
@@ -250,34 +257,53 @@ public final class WorldMapScreen extends Screen {
         if (this.waypointContextMenuOpen) {
             if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
                 int waypointMenuItem = this.waypointContextMenuItemAt(mouseX, mouseY);
+                if (waypointMenuItem == 0) {
+                    this.copyWaypointContextCoordinates();
+                    this.waypointContextMenuOpen = false;
+                    return true;
+                }
                 if (this.isWaypointPendingDelete(this.waypointContextMenuId)) {
-                    if (waypointMenuItem == 0) {
+                    if (waypointMenuItem == 1) {
                         this.deleteContextWaypoint();
                         this.waypointContextMenuOpen = false;
                         return true;
                     }
-                    if (waypointMenuItem == 1) {
+                    if (waypointMenuItem == 2) {
                         this.restoreContextWaypoint();
                         this.waypointContextMenuOpen = false;
                         return true;
                     }
                 }
-                if (waypointMenuItem == 0) {
+                int itemIndex = 1;
+                if (this.canShowTeleportOptions() && waypointMenuItem == itemIndex++) {
                     this.teleportToWaypointContextPosition();
                     this.waypointContextMenuOpen = false;
                     return true;
                 }
-                if (waypointMenuItem == 1) {
+                if (this.canShowBetaFeatures() && waypointMenuItem == itemIndex++) {
+                    this.startRouteToWaypointContextPosition();
+                    this.waypointContextMenuOpen = false;
+                    return true;
+                }
+                if (this.canShowBetaFeatures() && waypointMenuItem == itemIndex && this.worldMapManager.hasActiveRoute()) {
+                    this.worldMapManager.cancelRoute(this.minecraft);
+                    this.waypointContextMenuOpen = false;
+                    return true;
+                }
+                if (this.canShowBetaFeatures() && this.worldMapManager.hasActiveRoute()) {
+                    itemIndex++;
+                }
+                if (waypointMenuItem == itemIndex++) {
                     this.openWaypointEditScreen();
                     this.waypointContextMenuOpen = false;
                     return true;
                 }
-                if (waypointMenuItem == 2) {
+                if (waypointMenuItem == itemIndex++) {
                     this.toggleContextWaypointHighlight();
                     this.waypointContextMenuOpen = false;
                     return true;
                 }
-                if (waypointMenuItem == 3) {
+                if (waypointMenuItem == itemIndex++) {
                     this.markContextWaypointForDeletion();
                     this.waypointContextMenuOpen = false;
                     return true;
@@ -293,34 +319,53 @@ public final class WorldMapScreen extends Screen {
         if (this.structureContextMenuOpen) {
             if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
                 int structureMenuItem = this.structureContextMenuItemAt(mouseX, mouseY);
+                if (structureMenuItem == 0) {
+                    this.copyStructureContextCoordinates();
+                    this.structureContextMenuOpen = false;
+                    return true;
+                }
                 if (this.isStructureMarkerPendingDelete(this.structureContextMenuKey)) {
-                    if (structureMenuItem == 0) {
+                    if (structureMenuItem == 1) {
                         this.deleteContextStructure();
                         this.structureContextMenuOpen = false;
                         return true;
                     }
-                    if (structureMenuItem == 1) {
+                    if (structureMenuItem == 2) {
                         this.restoreContextStructure();
                         this.structureContextMenuOpen = false;
                         return true;
                     }
                 }
-                if (structureMenuItem == 0) {
+                int itemIndex = 1;
+                if (this.canShowTeleportOptions() && structureMenuItem == itemIndex++) {
                     this.teleportToStructureContextPosition();
                     this.structureContextMenuOpen = false;
                     return true;
                 }
-                if (structureMenuItem == 1) {
+                if (this.canShowBetaFeatures() && structureMenuItem == itemIndex++) {
+                    this.startRouteToStructureContextPosition();
+                    this.structureContextMenuOpen = false;
+                    return true;
+                }
+                if (this.canShowBetaFeatures() && structureMenuItem == itemIndex && this.worldMapManager.hasActiveRoute()) {
+                    this.worldMapManager.cancelRoute(this.minecraft);
+                    this.structureContextMenuOpen = false;
+                    return true;
+                }
+                if (this.canShowBetaFeatures() && this.worldMapManager.hasActiveRoute()) {
+                    itemIndex++;
+                }
+                if (structureMenuItem == itemIndex++) {
                     this.openStructureEditScreen();
                     this.structureContextMenuOpen = false;
                     return true;
                 }
-                if (structureMenuItem == 2) {
+                if (structureMenuItem == itemIndex++) {
                     this.toggleContextStructureHighlight();
                     this.structureContextMenuOpen = false;
                     return true;
                 }
-                if (structureMenuItem == 3) {
+                if (structureMenuItem == itemIndex++) {
                     this.markContextStructureForDeletion();
                     this.structureContextMenuOpen = false;
                     return true;
@@ -337,11 +382,30 @@ public final class WorldMapScreen extends Screen {
             if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
                 int contextMenuItem = this.contextMenuItemAt(mouseX, mouseY);
                 if (contextMenuItem == 0) {
+                    this.copyContextCoordinates();
+                    this.contextMenuOpen = false;
+                    return true;
+                }
+                int itemIndex = 1;
+                if (this.canShowTeleportOptions() && contextMenuItem == itemIndex++) {
                     this.teleportToContextPosition();
                     this.contextMenuOpen = false;
                     return true;
                 }
-                if (contextMenuItem == 1) {
+                if (this.canShowBetaFeatures() && contextMenuItem == itemIndex++) {
+                    this.startRouteToContextPosition();
+                    this.contextMenuOpen = false;
+                    return true;
+                }
+                if (this.canShowBetaFeatures() && contextMenuItem == itemIndex && this.worldMapManager.hasActiveRoute()) {
+                    this.worldMapManager.cancelRoute(this.minecraft);
+                    this.contextMenuOpen = false;
+                    return true;
+                }
+                if (this.canShowBetaFeatures() && this.worldMapManager.hasActiveRoute()) {
+                    itemIndex++;
+                }
+                if (contextMenuItem == itemIndex++) {
                     this.openWaypointCreateScreen();
                     this.contextMenuOpen = false;
                     return true;
@@ -433,7 +497,8 @@ public final class WorldMapScreen extends Screen {
 
         int worldX = Mth.floor(this.screenToWorldX(mouseX));
         int worldZ = Mth.floor(this.screenToWorldZ(mouseY));
-        return Component.translatable("gui.mappath.cursor_position", worldX, worldZ).getString();
+        int worldY = this.worldMapManager.defaultWaypointY(this.minecraft, worldX, worldZ);
+        return Component.translatable("gui.mappath.cursor_position", worldX, worldY, worldZ).getString();
     }
 
     private boolean isMouseOverMap(double mouseX, double mouseY) {
@@ -558,6 +623,12 @@ public final class WorldMapScreen extends Screen {
         this.renderMarkerToggle(guiGraphics, left, top, this.isMouseOverWaypointsToggle(mouseX, mouseY), MapPathConfig.CLIENT.showWaypoints() ? "W" : "w");
     }
 
+    private void renderBetaFeaturesToggle(GuiGraphics guiGraphics, int mouseX, int mouseY) {
+        int left = this.betaFeaturesToggleX();
+        int top = this.betaFeaturesToggleY();
+        this.renderMarkerToggle(guiGraphics, left, top, this.isMouseOverBetaFeaturesToggle(mouseX, mouseY), MapPathConfig.CLIENT.showBetaFeatures() ? "B" : "b");
+    }
+
     private void renderMarkerToggle(GuiGraphics guiGraphics, int left, int top, boolean hovered, String label) {
         int right = left + STRUCTURE_MARKER_TOGGLE_SIZE;
         int bottom = top + STRUCTURE_MARKER_TOGGLE_SIZE;
@@ -589,6 +660,12 @@ public final class WorldMapScreen extends Screen {
         return this.isMouseOverMarkerToggle(mouseX, mouseY, left, top);
     }
 
+    private boolean isMouseOverBetaFeaturesToggle(double mouseX, double mouseY) {
+        int left = this.betaFeaturesToggleX();
+        int top = this.betaFeaturesToggleY();
+        return this.isMouseOverMarkerToggle(mouseX, mouseY, left, top);
+    }
+
     private boolean isMouseOverMarkerToggle(double mouseX, double mouseY, int left, int top) {
         return mouseX >= left
             && mouseX < left + STRUCTURE_MARKER_TOGGLE_SIZE
@@ -610,6 +687,14 @@ public final class WorldMapScreen extends Screen {
 
     private int waypointsToggleY() {
         return this.structureMarkersToggleY() - STRUCTURE_MARKER_TOGGLE_SIZE - MARKER_TOGGLE_GAP;
+    }
+
+    private int betaFeaturesToggleX() {
+        return this.structureMarkersToggleX();
+    }
+
+    private int betaFeaturesToggleY() {
+        return this.waypointsToggleY() - STRUCTURE_MARKER_TOGGLE_SIZE - MARKER_TOGGLE_GAP;
     }
 
     private void openContextMenu(double mouseX, double mouseY) {
@@ -663,8 +748,18 @@ public final class WorldMapScreen extends Screen {
             guiGraphics.fill(left + 1, itemTop + 1, right - 1, itemTop + CONTEXT_MENU_ITEM_HEIGHT - 1, CONTEXT_MENU_HOVER_COLOR);
         }
 
-        this.renderContextMenuItem(guiGraphics, Component.translatable("gui.mappath.teleport_here"), left, top, 0);
-        this.renderContextMenuItem(guiGraphics, Component.translatable("gui.mappath.create_waypoint"), left, top, 1);
+        int itemIndex = 0;
+        this.renderContextMenuItem(guiGraphics, Component.literal(this.contextCoordinatesLabel()), left, top, itemIndex++);
+        if (this.canShowTeleportOptions()) {
+            this.renderContextMenuItem(guiGraphics, Component.translatable("gui.mappath.teleport_here"), left, top, itemIndex++);
+        }
+        if (this.canShowBetaFeatures()) {
+            this.renderContextMenuItem(guiGraphics, Component.translatable("gui.mappath.show_route"), left, top, itemIndex++);
+            if (this.worldMapManager.hasActiveRoute()) {
+                this.renderContextMenuItem(guiGraphics, Component.translatable("gui.mappath.cancel_route"), left, top, itemIndex++);
+            }
+        }
+        this.renderContextMenuItem(guiGraphics, Component.translatable("gui.mappath.create_waypoint"), left, top, itemIndex);
     }
 
     private void renderWaypointContextMenu(GuiGraphics guiGraphics, int mouseX, int mouseY) {
@@ -688,15 +783,26 @@ public final class WorldMapScreen extends Screen {
         }
 
         if (this.isWaypointPendingDelete(this.waypointContextMenuId)) {
-            this.renderContextMenuItem(guiGraphics, Component.translatable("gui.mappath.delete_waypoint_final"), left, top, 0);
-            this.renderContextMenuItem(guiGraphics, Component.translatable("gui.mappath.restore_waypoint"), left, top, 1);
+            this.renderContextMenuItem(guiGraphics, Component.literal(this.waypointContextCoordinatesLabel()), left, top, 0);
+            this.renderContextMenuItem(guiGraphics, Component.translatable("gui.mappath.delete_waypoint_final"), left, top, 1);
+            this.renderContextMenuItem(guiGraphics, Component.translatable("gui.mappath.restore_waypoint"), left, top, 2);
         } else {
-            this.renderContextMenuItem(guiGraphics, Component.translatable("gui.mappath.teleport_to_waypoint"), left, top, 0);
-            this.renderContextMenuItem(guiGraphics, Component.translatable("gui.mappath.edit_waypoint"), left, top, 1);
+            int itemIndex = 0;
+            this.renderContextMenuItem(guiGraphics, Component.literal(this.waypointContextCoordinatesLabel()), left, top, itemIndex++);
+            if (this.canShowTeleportOptions()) {
+                this.renderContextMenuItem(guiGraphics, Component.translatable("gui.mappath.teleport_to_waypoint"), left, top, itemIndex++);
+            }
+            if (this.canShowBetaFeatures()) {
+                this.renderContextMenuItem(guiGraphics, Component.translatable("gui.mappath.show_route"), left, top, itemIndex++);
+                if (this.worldMapManager.hasActiveRoute()) {
+                    this.renderContextMenuItem(guiGraphics, Component.translatable("gui.mappath.cancel_route"), left, top, itemIndex++);
+                }
+            }
+            this.renderContextMenuItem(guiGraphics, Component.translatable("gui.mappath.edit_waypoint"), left, top, itemIndex++);
             WaypointStore.Waypoint waypoint = this.contextWaypoint();
             String highlightKey = waypoint != null && waypoint.highlighted() ? "gui.mappath.disable_highlight" : "gui.mappath.enable_highlight";
-            this.renderContextMenuItem(guiGraphics, Component.translatable(highlightKey), left, top, 2);
-            this.renderContextMenuItem(guiGraphics, Component.translatable("gui.mappath.delete_waypoint"), left, top, 3);
+            this.renderContextMenuItem(guiGraphics, Component.translatable(highlightKey), left, top, itemIndex++);
+            this.renderContextMenuItem(guiGraphics, Component.translatable("gui.mappath.delete_waypoint"), left, top, itemIndex++);
         }
     }
 
@@ -721,15 +827,26 @@ public final class WorldMapScreen extends Screen {
         }
 
         if (this.isStructureMarkerPendingDelete(this.structureContextMenuKey)) {
-            this.renderContextMenuItem(guiGraphics, Component.translatable("gui.mappath.delete_structure_final"), left, top, 0);
-            this.renderContextMenuItem(guiGraphics, Component.translatable("gui.mappath.restore_structure"), left, top, 1);
+            this.renderContextMenuItem(guiGraphics, Component.literal(this.structureContextCoordinatesLabel()), left, top, 0);
+            this.renderContextMenuItem(guiGraphics, Component.translatable("gui.mappath.delete_structure_final"), left, top, 1);
+            this.renderContextMenuItem(guiGraphics, Component.translatable("gui.mappath.restore_structure"), left, top, 2);
         } else {
-            this.renderContextMenuItem(guiGraphics, Component.translatable("gui.mappath.teleport_to_structure"), left, top, 0);
-            this.renderContextMenuItem(guiGraphics, Component.translatable("gui.mappath.edit_structure"), left, top, 1);
+            int itemIndex = 0;
+            this.renderContextMenuItem(guiGraphics, Component.literal(this.structureContextCoordinatesLabel()), left, top, itemIndex++);
+            if (this.canShowTeleportOptions()) {
+                this.renderContextMenuItem(guiGraphics, Component.translatable("gui.mappath.teleport_to_structure"), left, top, itemIndex++);
+            }
+            if (this.canShowBetaFeatures()) {
+                this.renderContextMenuItem(guiGraphics, Component.translatable("gui.mappath.show_route"), left, top, itemIndex++);
+                if (this.worldMapManager.hasActiveRoute()) {
+                    this.renderContextMenuItem(guiGraphics, Component.translatable("gui.mappath.cancel_route"), left, top, itemIndex++);
+                }
+            }
+            this.renderContextMenuItem(guiGraphics, Component.translatable("gui.mappath.edit_structure"), left, top, itemIndex++);
             StructureMarkerStore.Marker marker = this.contextStructureMarker();
             String highlightKey = marker != null && marker.highlighted() ? "gui.mappath.disable_highlight" : "gui.mappath.enable_highlight";
-            this.renderContextMenuItem(guiGraphics, Component.translatable(highlightKey), left, top, 2);
-            this.renderContextMenuItem(guiGraphics, Component.translatable("gui.mappath.delete_structure"), left, top, 3);
+            this.renderContextMenuItem(guiGraphics, Component.translatable(highlightKey), left, top, itemIndex++);
+            this.renderContextMenuItem(guiGraphics, Component.translatable("gui.mappath.delete_structure"), left, top, itemIndex++);
         }
     }
 
@@ -777,20 +894,116 @@ public final class WorldMapScreen extends Screen {
         return Mth.floor((mouseY - this.structureContextMenuY) / CONTEXT_MENU_ITEM_HEIGHT);
     }
 
-    private static int contextMenuHeight() {
-        return CONTEXT_MENU_ITEM_HEIGHT * CONTEXT_MENU_ITEM_COUNT;
+    private int contextMenuHeight() {
+        return CONTEXT_MENU_ITEM_HEIGHT * (this.contextItemCount(CONTEXT_MENU_ITEM_COUNT, true) + 1);
     }
 
     private int waypointContextMenuHeight() {
-        return CONTEXT_MENU_ITEM_HEIGHT * (this.isWaypointPendingDelete(this.waypointContextMenuId) ? 2 : WAYPOINT_CONTEXT_MENU_ITEM_COUNT);
+        return CONTEXT_MENU_ITEM_HEIGHT * (this.isWaypointPendingDelete(this.waypointContextMenuId) ? 3 : this.contextItemCount(WAYPOINT_CONTEXT_MENU_ITEM_COUNT, true) + 1);
     }
 
     private int structureContextMenuHeight() {
-        return CONTEXT_MENU_ITEM_HEIGHT * (this.isStructureMarkerPendingDelete(this.structureContextMenuKey) ? 2 : STRUCTURE_CONTEXT_MENU_ITEM_COUNT);
+        return CONTEXT_MENU_ITEM_HEIGHT * (this.isStructureMarkerPendingDelete(this.structureContextMenuKey) ? 3 : this.contextItemCount(STRUCTURE_CONTEXT_MENU_ITEM_COUNT, true) + 1);
+    }
+
+    private int contextItemCount(int baseItemCount, boolean includesTeleport) {
+        int itemCount = baseItemCount;
+        if (includesTeleport && !this.canShowTeleportOptions()) {
+            itemCount--;
+        }
+        if (!this.canShowBetaFeatures()) {
+            itemCount--;
+        }
+        return itemCount + (this.canShowBetaFeatures() && this.worldMapManager.hasActiveRoute() ? 1 : 0);
+    }
+
+    private boolean canShowBetaFeatures() {
+        return MapPathConfig.CLIENT.showBetaFeatures();
+    }
+
+    private boolean canShowTeleportOptions() {
+        if (this.minecraft == null || this.minecraft.player == null) {
+            return false;
+        }
+        if (this.minecraft.player.hasPermissions(2)) {
+            return true;
+        }
+        if (!this.minecraft.isLocalServer() || !this.minecraft.hasSingleplayerServer()) {
+            return false;
+        }
+
+        IntegratedServer server = this.minecraft.getSingleplayerServer();
+        return server != null && server.getWorldData().isAllowCommands();
+    }
+
+    private void copyContextCoordinates() {
+        this.copyCoordinatesToClipboard(this.contextCoordinatesClipboardText());
+    }
+
+    private void copyWaypointContextCoordinates() {
+        this.copyCoordinatesToClipboard(this.waypointContextCoordinatesLabel());
+    }
+
+    private void copyStructureContextCoordinates() {
+        this.copyCoordinatesToClipboard(this.structureContextCoordinatesLabel());
+    }
+
+    private void copyCoordinatesToClipboard(String coordinates) {
+        if (this.minecraft != null) {
+            this.minecraft.keyboardHandler.setClipboard(coordinates);
+        }
+    }
+
+    private String contextCoordinatesLabel() {
+        return this.formatCoordinates(this.contextWorldX, this.contextWorldY(), this.contextWorldZ);
+    }
+
+    private String contextCoordinatesClipboardText() {
+        return this.contextCoordinatesLabel();
+    }
+
+    private String waypointContextCoordinatesLabel() {
+        WaypointStore.Waypoint waypoint = this.contextWaypoint();
+        return waypoint == null
+            ? ""
+            : this.formatCoordinates(waypoint.worldX(), waypoint.worldY(), waypoint.worldZ());
+    }
+
+    private String structureContextCoordinatesLabel() {
+        StructureMarkerStore.Marker marker = this.contextStructureMarker();
+        if (marker == null) {
+            return "";
+        }
+        if (marker.worldY() == Integer.MIN_VALUE) {
+            return this.formatCoordinates(marker.worldX(), this.worldMapManager.defaultWaypointY(this.minecraft, marker.worldX(), marker.worldZ()), marker.worldZ());
+        }
+
+        return this.formatCoordinates(marker.worldX(), marker.worldY(), marker.worldZ());
+    }
+
+    private int contextWorldY() {
+        return this.worldMapManager.defaultWaypointY(this.minecraft, this.contextWorldX, this.contextWorldZ);
+    }
+
+    private String formatCoordinates(int worldX, int worldY, int worldZ) {
+        return "X: " + worldX + " Y: " + worldY + " Z: " + worldZ;
     }
 
     private void teleportToContextPosition() {
         this.worldMapManager.teleportToTopBlock(this.minecraft, this.contextWorldX, this.contextWorldZ);
+        this.onClose();
+    }
+
+    private void startRouteToContextPosition() {
+        int defaultY = this.worldMapManager.defaultWaypointY(this.minecraft, this.contextWorldX, this.contextWorldZ);
+        this.worldMapManager.startRouteToPosition(
+            this.minecraft,
+            Component.translatable("gui.mappath.route_position_label", this.contextWorldX, this.contextWorldZ).getString(),
+            this.contextWorldX,
+            defaultY,
+            this.contextWorldZ,
+            RouteTarget.Type.POSITION
+        );
         this.onClose();
     }
 
@@ -805,6 +1018,21 @@ public final class WorldMapScreen extends Screen {
         WaypointStore.Waypoint waypoint = this.contextWaypoint();
         if (waypoint != null) {
             this.worldMapManager.teleportToPosition(this.minecraft, waypoint.worldX(), waypoint.worldY(), waypoint.worldZ());
+            this.onClose();
+        }
+    }
+
+    private void startRouteToWaypointContextPosition() {
+        WaypointStore.Waypoint waypoint = this.contextWaypoint();
+        if (waypoint != null) {
+            this.worldMapManager.startRouteToPosition(
+                this.minecraft,
+                waypoint.name(),
+                waypoint.worldX(),
+                waypoint.worldY(),
+                waypoint.worldZ(),
+                RouteTarget.Type.WAYPOINT
+            );
             this.onClose();
         }
     }
@@ -853,6 +1081,22 @@ public final class WorldMapScreen extends Screen {
         }
     }
 
+    private void startRouteToStructureContextPosition() {
+        StructureMarkerStore.Marker marker = this.contextStructureMarker();
+        if (marker != null) {
+            int worldY = marker.worldY() == Integer.MIN_VALUE
+                ? this.worldMapManager.defaultWaypointY(this.minecraft, marker.worldX(), marker.worldZ())
+                : marker.worldY();
+            this.worldMapManager.startRouteToStructure(
+                this.minecraft,
+                this.structureRouteLabel(marker),
+                marker,
+                worldY
+            );
+            this.onClose();
+        }
+    }
+
     private void openStructureEditScreen() {
         StructureMarkerStore.Marker marker = this.contextStructureMarker();
         if (marker != null && this.minecraft != null) {
@@ -887,6 +1131,29 @@ public final class WorldMapScreen extends Screen {
 
     private StructureMarkerStore.Marker contextStructureMarker() {
         return this.structureContextMenuKey == null ? null : this.worldMapManager.structureMarker(this.minecraft, this.structureContextMenuKey);
+    }
+
+    private String structureRouteLabel(StructureMarkerStore.Marker marker) {
+        if (!marker.name().isEmpty()) {
+            return marker.name();
+        }
+
+        String[] words = marker.type().id().split("_");
+        StringBuilder label = new StringBuilder();
+        for (String word : words) {
+            if (word.isEmpty()) {
+                continue;
+            }
+            if (!label.isEmpty()) {
+                label.append(' ');
+            }
+            label.append(Character.toUpperCase(word.charAt(0)));
+            if (word.length() > 1) {
+                label.append(word.substring(1));
+            }
+        }
+
+        return label.toString();
     }
 
     private void deleteWaypoint(UUID id) {

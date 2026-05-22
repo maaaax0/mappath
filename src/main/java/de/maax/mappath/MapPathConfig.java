@@ -15,6 +15,12 @@ public final class MapPathConfig {
     public static final boolean DEFAULT_SHOW_MAP_LOAD_STATUS = true;
     public static final boolean DEFAULT_SHOW_STRUCTURE_MARKERS = true;
     public static final boolean DEFAULT_SHOW_WAYPOINTS = true;
+    public static final boolean DEFAULT_SHOW_BETA_FEATURES = false;
+    public static final boolean DEFAULT_SHOW_ROUTE_VISUALIZER = true;
+    public static final boolean DEFAULT_SHOW_ROUTE_TARGET_MARKER = false;
+    public static final int DEFAULT_ROUTE_TRAIL_MAX_SPEED = 6;
+    public static final int DEFAULT_ROUTE_PLANNING_DISTANCE = 64;
+    public static final int DEFAULT_ROUTE_RECALCULATE_DISTANCE = 12;
 
     public static final Client CLIENT;
     public static final ModConfigSpec CLIENT_SPEC;
@@ -39,6 +45,12 @@ public final class MapPathConfig {
         private final ModConfigSpec.BooleanValue showMapLoadStatus;
         private final ModConfigSpec.BooleanValue showStructureMarkers;
         private final ModConfigSpec.BooleanValue showWaypoints;
+        private final ModConfigSpec.BooleanValue showBetaFeatures;
+        private final ModConfigSpec.BooleanValue showRouteVisualizer;
+        private final ModConfigSpec.BooleanValue showRouteTargetMarker;
+        private final ModConfigSpec.IntValue routeTrailMaxSpeed;
+        private final ModConfigSpec.IntValue routePlanningDistance;
+        private final ModConfigSpec.IntValue routeRecalculateDistance;
 
         private Client(ModConfigSpec.Builder builder) {
             this.liveRefreshRadius = builder
@@ -84,6 +96,30 @@ public final class MapPathConfig {
                 .comment("Shows waypoint icons on the world map.")
                 .translation("mappath.configuration.showWaypoints")
                 .define("showWaypoints", DEFAULT_SHOW_WAYPOINTS);
+            this.showBetaFeatures = builder
+                .comment("Enables beta features on the world map.")
+                .translation("mappath.configuration.showBetaFeatures")
+                .define("showBetaFeatures", DEFAULT_SHOW_BETA_FEATURES);
+            this.showRouteVisualizer = builder
+                .comment("Shows the active client-side route visualizer in the world and HUD.")
+                .translation("mappath.configuration.showRouteVisualizer")
+                .define("showRouteVisualizer", DEFAULT_SHOW_ROUTE_VISUALIZER);
+            this.showRouteTargetMarker = builder
+                .comment("Shows a marker at the active route target in the world.")
+                .translation("mappath.configuration.showRouteTargetMarker")
+                .define("showRouteTargetMarker", DEFAULT_SHOW_ROUTE_TARGET_MARKER);
+            this.routeTrailMaxSpeed = builder
+                .comment("Maximum speed of the animated route trail in blocks per second.")
+                .translation("mappath.configuration.routeTrailMaxSpeed")
+                .defineInRange("routeTrailMaxSpeed", DEFAULT_ROUTE_TRAIL_MAX_SPEED, 1, 64);
+            this.routePlanningDistance = builder
+                .comment("Maximum horizontal distance planned at once for long routes. Longer routes are recalculated while travelling.")
+                .translation("mappath.configuration.routePlanningDistance")
+                .defineInRange("routePlanningDistance", DEFAULT_ROUTE_PLANNING_DISTANCE, 32, 512);
+            this.routeRecalculateDistance = builder
+                .comment("How far the player may move away from the active route before it is recalculated.")
+                .translation("mappath.configuration.routeRecalculateDistance")
+                .defineInRange("routeRecalculateDistance", DEFAULT_ROUTE_RECALCULATE_DISTANCE, 3, 128);
         }
 
         public int liveRefreshRadius() {
@@ -126,6 +162,30 @@ public final class MapPathConfig {
             return this.showWaypoints.get();
         }
 
+        public boolean showBetaFeatures() {
+            return this.showBetaFeatures.get();
+        }
+
+        public boolean showRouteVisualizer() {
+            return this.showRouteVisualizer.get();
+        }
+
+        public boolean showRouteTargetMarker() {
+            return this.showRouteTargetMarker.get();
+        }
+
+        public int routeTrailMaxSpeed() {
+            return this.routeTrailMaxSpeed.get();
+        }
+
+        public int routePlanningDistance() {
+            return this.routePlanningDistance.get();
+        }
+
+        public int routeRecalculateDistance() {
+            return this.routeRecalculateDistance.get();
+        }
+
         public void setShowStructureMarkers(boolean showStructureMarkers) {
             this.showStructureMarkers.set(showStructureMarkers);
             this.showStructureMarkers.save();
@@ -134,6 +194,11 @@ public final class MapPathConfig {
         public void setShowWaypoints(boolean showWaypoints) {
             this.showWaypoints.set(showWaypoints);
             this.showWaypoints.save();
+        }
+
+        public void setShowBetaFeatures(boolean showBetaFeatures) {
+            this.showBetaFeatures.set(showBetaFeatures);
+            this.showBetaFeatures.save();
         }
     }
 }

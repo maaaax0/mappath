@@ -25,7 +25,7 @@ public final class MapPathNetworking {
     }
 
     public static void register(RegisterPayloadHandlersEvent event) {
-        event.registrar("1")
+        event.registrar("3")
             .playToServer(TeleportTopPayload.TYPE, TeleportTopPayload.STREAM_CODEC, MapPathNetworking::handleTeleportTop)
             .playToServer(TeleportPositionPayload.TYPE, TeleportPositionPayload.STREAM_CODEC, MapPathNetworking::handleTeleportPosition)
             .playToClient(StructureMarkersPayload.TYPE, StructureMarkersPayload.STREAM_CODEC, MapPathNetworking::handleStructureMarkers);
@@ -140,9 +140,31 @@ public final class MapPathNetworking {
         }
     }
 
-    public record StructureMarker(String typeId, int worldX, int worldY, int worldZ) {
+    public record StructureMarker(
+        String typeId,
+        int worldX,
+        int worldY,
+        int worldZ,
+        int minWorldX,
+        int minWorldY,
+        int minWorldZ,
+        int maxWorldX,
+        int maxWorldY,
+        int maxWorldZ
+    ) {
         private static StructureMarker read(RegistryFriendlyByteBuf buffer) {
-            return new StructureMarker(buffer.readUtf(64), buffer.readInt(), buffer.readInt(), buffer.readInt());
+            return new StructureMarker(
+                buffer.readUtf(64),
+                buffer.readInt(),
+                buffer.readInt(),
+                buffer.readInt(),
+                buffer.readInt(),
+                buffer.readInt(),
+                buffer.readInt(),
+                buffer.readInt(),
+                buffer.readInt(),
+                buffer.readInt()
+            );
         }
 
         private void write(RegistryFriendlyByteBuf buffer) {
@@ -150,6 +172,12 @@ public final class MapPathNetworking {
             buffer.writeInt(this.worldX);
             buffer.writeInt(this.worldY);
             buffer.writeInt(this.worldZ);
+            buffer.writeInt(this.minWorldX);
+            buffer.writeInt(this.minWorldY);
+            buffer.writeInt(this.minWorldZ);
+            buffer.writeInt(this.maxWorldX);
+            buffer.writeInt(this.maxWorldY);
+            buffer.writeInt(this.maxWorldZ);
         }
     }
 

@@ -28,6 +28,7 @@ final class WaypointCreateScreen extends Screen {
     private final int defaultX;
     private final int defaultY;
     private final int defaultZ;
+    private final boolean prefillCoordinates;
     private BannerIconType selectedIcon;
     private EditBox nameBox;
     private EditBox xBox;
@@ -36,6 +37,10 @@ final class WaypointCreateScreen extends Screen {
     private Button confirmButton;
 
     WaypointCreateScreen(Screen parent, WorldMapManager worldMapManager, int defaultX, int defaultY, int defaultZ) {
+        this(parent, worldMapManager, defaultX, defaultY, defaultZ, false);
+    }
+
+    WaypointCreateScreen(Screen parent, WorldMapManager worldMapManager, int defaultX, int defaultY, int defaultZ, boolean prefillCoordinates) {
         super(Component.translatable("screen.mappath.create_waypoint"));
         this.parent = parent;
         this.worldMapManager = worldMapManager;
@@ -43,6 +48,7 @@ final class WaypointCreateScreen extends Screen {
         this.defaultX = defaultX;
         this.defaultY = defaultY;
         this.defaultZ = defaultZ;
+        this.prefillCoordinates = prefillCoordinates;
         BannerIconType[] icons = BannerIconType.values();
         this.selectedIcon = icons[ThreadLocalRandom.current().nextInt(icons.length)];
     }
@@ -55,6 +61,7 @@ final class WaypointCreateScreen extends Screen {
         this.defaultX = editingWaypoint.worldX();
         this.defaultY = editingWaypoint.worldY();
         this.defaultZ = editingWaypoint.worldZ();
+        this.prefillCoordinates = true;
         this.selectedIcon = editingWaypoint.icon();
     }
 
@@ -82,10 +89,10 @@ final class WaypointCreateScreen extends Screen {
         this.xBox = this.coordinateBox(fieldLeft, top + 20 + ROW_GAP * 2, fieldWidth, this.defaultX);
         this.yBox = this.coordinateBox(fieldLeft, top + 20 + ROW_GAP * 3, fieldWidth, this.defaultY);
         this.zBox = this.coordinateBox(fieldLeft, top + 20 + ROW_GAP * 4, fieldWidth, this.defaultZ);
-        if (this.editingWaypoint != null) {
-            this.xBox.setValue(Integer.toString(this.editingWaypoint.worldX()));
-            this.yBox.setValue(Integer.toString(this.editingWaypoint.worldY()));
-            this.zBox.setValue(Integer.toString(this.editingWaypoint.worldZ()));
+        if (this.prefillCoordinates) {
+            this.xBox.setValue(Integer.toString(this.defaultX));
+            this.yBox.setValue(Integer.toString(this.defaultY));
+            this.zBox.setValue(Integer.toString(this.defaultZ));
         }
         this.addRenderableWidget(this.xBox);
         this.addRenderableWidget(this.yBox);

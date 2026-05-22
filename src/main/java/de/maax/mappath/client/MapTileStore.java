@@ -79,6 +79,11 @@ final class MapTileStore implements AutoCloseable {
         return height == UNKNOWN_HEIGHT ? Integer.MIN_VALUE : height;
     }
 
+    boolean hasKnownHeight(int worldX, int worldZ) {
+        Tile tile = this.getTile(worldX >> 4, worldZ >> 4);
+        return tile.heights[index(worldX, worldZ)] != UNKNOWN_HEIGHT;
+    }
+
     boolean isChunkComplete(int chunkX, int chunkZ) {
         Tile tile = this.getTile(chunkX, chunkZ);
         for (int color : tile.colors) {

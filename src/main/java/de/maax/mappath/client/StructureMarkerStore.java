@@ -20,7 +20,7 @@ import java.util.List;
 import java.util.Map;
 
 final class StructureMarkerStore {
-    private static final int FILE_VERSION = 3;
+    private static final int FILE_VERSION = 5;
     private static final String FILE_NAME = "structure_markers.bin";
 
     private ResourceLocation dimensionId;
@@ -42,13 +42,39 @@ final class StructureMarkerStore {
                 continue;
             }
 
-            Marker marker = new Marker(type, incomingMarker.worldX(), incomingMarker.worldY(), incomingMarker.worldZ(), "", false);
+            Marker marker = new Marker(
+                type,
+                incomingMarker.worldX(),
+                incomingMarker.worldY(),
+                incomingMarker.worldZ(),
+                incomingMarker.minWorldX(),
+                incomingMarker.minWorldY(),
+                incomingMarker.minWorldZ(),
+                incomingMarker.maxWorldX(),
+                incomingMarker.maxWorldY(),
+                incomingMarker.maxWorldZ(),
+                "",
+                false
+            );
             Marker existingMarker = this.markers.get(marker.key());
             if (existingMarker == null) {
                 this.markers.put(marker.key(), marker);
                 changed = true;
-            } else if (existingMarker.worldY() != marker.worldY()) {
-                this.markers.put(marker.key(), new Marker(existingMarker.type(), existingMarker.worldX(), marker.worldY(), existingMarker.worldZ(), existingMarker.name(), existingMarker.highlighted()));
+            } else if (existingMarker.worldY() != marker.worldY() || !existingMarker.hasSameBounds(marker)) {
+                this.markers.put(marker.key(), new Marker(
+                    existingMarker.type(),
+                    existingMarker.worldX(),
+                    marker.worldY(),
+                    existingMarker.worldZ(),
+                    marker.minWorldX(),
+                    marker.minWorldY(),
+                    marker.minWorldZ(),
+                    marker.maxWorldX(),
+                    marker.maxWorldY(),
+                    marker.maxWorldZ(),
+                    existingMarker.name(),
+                    existingMarker.highlighted()
+                ));
                 changed = true;
             }
         }
@@ -71,7 +97,7 @@ final class StructureMarkerStore {
             return;
         }
 
-        this.markers.put(key, new Marker(marker.type(), marker.worldX(), marker.worldY(), marker.worldZ(), name, marker.highlighted()));
+        this.markers.put(key, new Marker(marker.type(), marker.worldX(), marker.worldY(), marker.worldZ(), marker.minWorldX(), marker.minWorldY(), marker.minWorldZ(), marker.maxWorldX(), marker.maxWorldY(), marker.maxWorldZ(), name, marker.highlighted()));
         this.dirty = true;
         this.flush();
     }
@@ -83,7 +109,7 @@ final class StructureMarkerStore {
             return;
         }
 
-        this.markers.put(key, new Marker(marker.type(), marker.worldX(), marker.worldY(), marker.worldZ(), marker.name(), highlighted));
+        this.markers.put(key, new Marker(marker.type(), marker.worldX(), marker.worldY(), marker.worldZ(), marker.minWorldX(), marker.minWorldY(), marker.minWorldZ(), marker.maxWorldX(), marker.maxWorldY(), marker.maxWorldZ(), marker.name(), highlighted));
         this.dirty = true;
         this.flush();
     }
@@ -150,10 +176,16 @@ final class StructureMarkerStore {
                 int worldX = input.readInt();
                 int worldY = fileVersion >= 3 ? input.readInt() : Integer.MIN_VALUE;
                 int worldZ = input.readInt();
+                int minWorldX = fileVersion >= 4 ? input.readInt() : worldX;
+                int minWorldY = fileVersion >= 5 ? input.readInt() : worldY;
+                int minWorldZ = fileVersion >= 4 ? input.readInt() : worldZ;
+                int maxWorldX = fileVersion >= 4 ? input.readInt() : worldX;
+                int maxWorldY = fileVersion >= 5 ? input.readInt() : worldY;
+                int maxWorldZ = fileVersion >= 4 ? input.readInt() : worldZ;
                 String name = fileVersion >= 2 ? input.readUTF() : "";
                 boolean highlighted = fileVersion >= 3 && input.readBoolean();
                 if (type != null) {
-                    Marker marker = new Marker(type, worldX, worldY, worldZ, name, highlighted);
+                    Marker marker = new Marker(type, worldX, worldY, worldZ, minWorldX, minWorldY, minWorldZ, maxWorldX, maxWorldY, maxWorldZ, name, highlighted);
                     this.markers.put(marker.key(), marker);
                 }
             }
@@ -179,6 +211,12 @@ final class StructureMarkerStore {
                     output.writeInt(marker.worldX());
                     output.writeInt(marker.worldY());
                     output.writeInt(marker.worldZ());
+                    output.writeInt(marker.minWorldX());
+                    output.writeInt(marker.minWorldY());
+                    output.writeInt(marker.minWorldZ());
+                    output.writeInt(marker.maxWorldX());
+                    output.writeInt(marker.maxWorldY());
+                    output.writeInt(marker.maxWorldZ());
                     output.writeUTF(marker.name());
                     output.writeBoolean(marker.highlighted());
                 }
@@ -188,9 +226,31 @@ final class StructureMarkerStore {
         }
     }
 
-    record Marker(StructureMarkerType type, int worldX, int worldY, int worldZ, String name, boolean highlighted) {
+    record Marker(
+        StructureMarkerType type,
+        int worldX,
+        int worldY,
+        int worldZ,
+        int minWorldX,
+        int minWorldY,
+        int minWorldZ,
+        int maxWorldX,
+        int maxWorldY,
+        int maxWorldZ,
+        String name,
+        boolean highlighted
+    ) {
         String key() {
             return this.type.id() + ":" + this.worldX + ":" + this.worldZ;
+        }
+
+        boolean hasSameBounds(Marker marker) {
+            return this.minWorldX == marker.minWorldX
+                && this.minWorldY == marker.minWorldY
+                && this.minWorldZ == marker.minWorldZ
+                && this.maxWorldX == marker.maxWorldX
+                && this.maxWorldY == marker.maxWorldY
+                && this.maxWorldZ == marker.maxWorldZ;
         }
     }
 }
