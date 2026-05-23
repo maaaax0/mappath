@@ -23,8 +23,9 @@ public final class MapPathConfig {
     public static final int DEFAULT_ENTITY_MARKER_VERTICAL_RANGE = 16;
     public static final boolean DEFAULT_SHOW_BETA_FEATURES = false;
     public static final boolean DEFAULT_SHOW_MINIMAP = true;
+    public static final boolean DEFAULT_SHOW_MINIMAP_COORDINATES = true;
     public static final int DEFAULT_MINIMAP_SIZE = 128;
-    public static final int DEFAULT_MINIMAP_BLOCKS_PER_PIXEL = 2;
+    public static final int DEFAULT_MINIMAP_BLOCKS_PER_PIXEL = 1;
     public static final boolean DEFAULT_SHOW_ROUTE_VISUALIZER = true;
     public static final boolean DEFAULT_SHOW_ROUTE_TARGET_MARKER = false;
     public static final int DEFAULT_ROUTE_TRAIL_MAX_SPEED = 6;
@@ -59,6 +60,7 @@ public final class MapPathConfig {
         private final ModConfigSpec.IntValue entityMarkerVerticalRange;
         private final ModConfigSpec.BooleanValue showBetaFeatures;
         private final ModConfigSpec.BooleanValue showMinimap;
+        private final ModConfigSpec.BooleanValue showMinimapCoordinates;
         private final ModConfigSpec.IntValue minimapSize;
         private final ModConfigSpec.IntValue minimapBlocksPerPixel;
         private final ModConfigSpec.BooleanValue showRouteVisualizer;
@@ -134,6 +136,10 @@ public final class MapPathConfig {
                 .comment("Shows a small minimap in the top-right HUD.")
                 .translation("mappath.configuration.minimap.showMinimap")
                 .define("showMinimap", DEFAULT_SHOW_MINIMAP);
+            this.showMinimapCoordinates = builder
+                .comment("Shows the player coordinates below the minimap.")
+                .translation("mappath.configuration.minimap.showMinimapCoordinates")
+                .define("showMinimapCoordinates", DEFAULT_SHOW_MINIMAP_COORDINATES);
             this.minimapSize = builder
                 .comment("Minimap size in HUD pixels.")
                 .translation("mappath.configuration.minimap.minimapSize")
@@ -262,6 +268,10 @@ public final class MapPathConfig {
             return this.showMinimap.get();
         }
 
+        public boolean showMinimapCoordinates() {
+            return this.showMinimapCoordinates.get();
+        }
+
         public int minimapSize() {
             return this.minimapSize.get();
         }
@@ -323,6 +333,11 @@ public final class MapPathConfig {
         public void setShowMinimap(boolean showMinimap) {
             this.showMinimap.set(showMinimap);
             this.showMinimap.save();
+        }
+
+        public void setShowMinimapCoordinates(boolean showMinimapCoordinates) {
+            this.showMinimapCoordinates.set(showMinimapCoordinates);
+            this.showMinimapCoordinates.save();
         }
 
         public void setLiveRefreshRadius(int liveRefreshRadius) {

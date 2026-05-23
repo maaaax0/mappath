@@ -18,6 +18,8 @@ import java.util.Map;
 
 final class MinimapRenderer {
     private static final int MARGIN = 8;
+    private static final int COORDINATE_LABEL_COLOR = 0xFFFFFFFF;
+    private static final int COORDINATE_LABEL_SHADOW_COLOR = 0x99000000;
     private static final int PLAYER_MARKER_SIZE = 8;
     private static final int MARKER_SIZE = Math.round(PLAYER_MARKER_SIZE * 4.0F / 5.0F);
     private static final int MOB_MARKER_SIZE = MARKER_SIZE;
@@ -62,6 +64,7 @@ final class MinimapRenderer {
         double pixelsPerBlock = 1.0D / Math.max(1, MapPathConfig.CLIENT.minimapBlocksPerPixel());
         float partialTick = event.getPartialTick().getGameTimeDeltaPartialTick(false);
         double centerWorldX = Mth.lerp(partialTick, minecraft.player.xo, minecraft.player.getX());
+        double centerWorldY = Mth.lerp(partialTick, minecraft.player.yo, minecraft.player.getY());
         double centerWorldZ = Mth.lerp(partialTick, minecraft.player.zo, minecraft.player.getZ());
         GuiGraphics guiGraphics = event.getGuiGraphics();
 
@@ -87,6 +90,27 @@ final class MinimapRenderer {
         renderMarkers(guiGraphics, worldMapManager, minecraft, contentLeft, contentTop, innerSize, centerWorldX, centerWorldZ, pixelsPerBlock, partialTick);
         renderPlayer(guiGraphics, minecraft, contentLeft + innerSize / 2.0F, contentTop + innerSize / 2.0F, partialTick);
         guiGraphics.disableScissor();
+
+        if (MapPathConfig.CLIENT.showMinimapCoordinates()) {
+            renderCoordinateLabel(guiGraphics, minecraft, left, top + frameSize + 2, frameSize, centerWorldX, centerWorldY, centerWorldZ);
+        }
+    }
+
+    private static void renderCoordinateLabel(
+        GuiGraphics guiGraphics,
+        Minecraft minecraft,
+        int left,
+        int top,
+        int width,
+        double worldX,
+        double worldY,
+        double worldZ
+    ) {
+        String label = "X: " + Mth.floor(worldX) + " / Y: " + Mth.floor(worldY) + " / Z: " + Mth.floor(worldZ);
+        int labelWidth = minecraft.font.width(label);
+        int x = left + (width - labelWidth) / 2;
+        guiGraphics.fill(x - 3, top - 1, x + labelWidth + 3, top + minecraft.font.lineHeight + 1, COORDINATE_LABEL_SHADOW_COLOR);
+        guiGraphics.drawString(minecraft.font, label, x, top, COORDINATE_LABEL_COLOR, false);
     }
 
     private static void renderMarkers(

@@ -111,6 +111,7 @@ public final class MapPathConfigScreen extends Screen {
             }
             case MINIMAP -> {
                 index = this.addBooleanSetting(index, left, rightColumn, top, columnWidth, targetCategory, "mappath.configuration.minimap.showMinimap", MapPathConfig.CLIENT.showMinimap(), MapPathConfig.CLIENT::setShowMinimap);
+                index = this.addBooleanSetting(index, left, rightColumn, top, columnWidth, targetCategory, "mappath.configuration.minimap.showMinimapCoordinates", MapPathConfig.CLIENT.showMinimapCoordinates(), MapPathConfig.CLIENT::setShowMinimapCoordinates);
                 index = this.addIntSetting(index, left, rightColumn, top, columnWidth, targetCategory, "mappath.configuration.minimap.minimapSize", MapPathConfig.CLIENT::minimapSize, MapPathConfig.CLIENT::setMinimapSize, new int[] {64, 96, 128, 160, 192, 224, 256});
                 index = this.addIntSetting(index, left, rightColumn, top, columnWidth, targetCategory, "mappath.configuration.minimap.minimapBlocksPerPixel", MapPathConfig.CLIENT::minimapBlocksPerPixel, MapPathConfig.CLIENT::setMinimapBlocksPerPixel, new int[] {1, 2, 3, 4, 6, 8});
                 yield index;

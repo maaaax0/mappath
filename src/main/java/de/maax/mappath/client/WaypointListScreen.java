@@ -1,6 +1,5 @@
 package de.maax.mappath.client;
 
-import com.mojang.blaze3d.systems.RenderSystem;
 import de.maax.mappath.BannerIconType;
 import de.maax.mappath.MapPath;
 import de.maax.mappath.MapPathConfig;
@@ -43,7 +42,7 @@ final class WaypointListScreen extends Screen {
     private static final int RESTORE_BUTTON_WIDTH = 90;
     private static final int DELETE_PERMANENTLY_BUTTON_WIDTH = 112;
     private static final int ACTION_BAR_HEIGHT = 24;
-    private static final int SCROLLBAR_WIDTH = 6;
+    private static final int SCROLLBAR_WIDTH = 8;
     private static final int SEARCH_TEXT_PADDING_X = 8;
     private static final int SEARCH_TEXT_OFFSET_Y = 2;
     private static final int CHECKBOX_SIZE = 16;
@@ -58,9 +57,9 @@ final class WaypointListScreen extends Screen {
     private static final int ROW_BACKGROUND = 0x70000000;
     private static final int ROW_HOVER_BORDER = 0xFF80FFFF;
     private static final int ROW_SELECTED_BORDER = 0xFFFFFFFF;
+    private static final int SCROLLBAR_TRACK_COLOR = 0xFF4C4C4C;
+    private static final int SCROLLBAR_KNOB_COLOR = 0xFF686868;
     private static final ResourceLocation BUTTON_SPRITE = ResourceLocation.withDefaultNamespace("widget/button");
-    private static final ResourceLocation SCROLLER_SPRITE = ResourceLocation.withDefaultNamespace("widget/scroller");
-    private static final ResourceLocation SCROLLER_BACKGROUND_SPRITE = ResourceLocation.withDefaultNamespace("widget/scroller_background");
     private static final ResourceLocation CHECKBOX_TEXTURE =
         ResourceLocation.fromNamespaceAndPath(MapPath.MODID, "textures/gui/checkbox/checkbox.png");
     private static final ResourceLocation CHECKBOX_HIGHLIGHTED_TEXTURE =
@@ -282,7 +281,7 @@ final class WaypointListScreen extends Screen {
             this.keepSearchFocused = false;
         }
 
-        y = this.deathWaypointsToggleY() + CHECKBOX_SIZE + (this.compactLayout() ? 6 : 14);
+        y = this.deathWaypointsToggleY() + CHECKBOX_SIZE + (this.compactLayout() ? 6 : 8 + this.font.lineHeight + 3);
         int dropdownWidth = controlWidth;
         int dimensionX = filterX;
         int sortCategoryX = filterX;
@@ -455,9 +454,9 @@ final class WaypointListScreen extends Screen {
         guiGraphics.drawCenteredString(this.font, Component.translatable("gui.mappath.waypoints.filters"), (left + this.filterPanelRight()) / 2, top + 28, WHITE_TEXT_COLOR);
         int labelY = top + 60;
         guiGraphics.drawString(this.font, Component.translatable("gui.mappath.waypoints.search"), labelX, labelY, WHITE_TEXT_COLOR, false);
-        guiGraphics.drawString(this.font, Component.translatable("gui.mappath.waypoints.dimension"), labelX, this.dimensionDropdown.y() + 6, WHITE_TEXT_COLOR, false);
-        guiGraphics.drawString(this.font, Component.translatable("gui.mappath.waypoints.sort_category"), labelX, this.sortCategoryDropdown.y() + 6, WHITE_TEXT_COLOR, false);
-        guiGraphics.drawString(this.font, Component.translatable("gui.mappath.waypoints.sort_order"), labelX, this.sortOrderDropdown.y() + 6, WHITE_TEXT_COLOR, false);
+        guiGraphics.drawString(this.font, Component.translatable("gui.mappath.waypoints.dimension"), labelX, this.dropdownLabelY(this.dimensionDropdown), WHITE_TEXT_COLOR, false);
+        guiGraphics.drawString(this.font, Component.translatable("gui.mappath.waypoints.sort_category"), labelX, this.dropdownLabelY(this.sortCategoryDropdown), WHITE_TEXT_COLOR, false);
+        guiGraphics.drawString(this.font, Component.translatable("gui.mappath.waypoints.sort_order"), labelX, this.dropdownLabelY(this.sortOrderDropdown), WHITE_TEXT_COLOR, false);
 
         this.dimensionDropdown.renderButton(guiGraphics, this.font);
         this.sortCategoryDropdown.renderButton(guiGraphics, this.font);
@@ -479,6 +478,10 @@ final class WaypointListScreen extends Screen {
         this.drawBorder(guiGraphics, left, top, right, bottom, border);
         this.searchBox.setTextColor(textColor);
         this.searchBox.setTextColorUneditable(textColor);
+    }
+
+    private int dropdownLabelY(Dropdown<?> dropdown) {
+        return dropdown.y() - this.font.lineHeight - 3;
     }
 
     private void renderDeathWaypointsToggle(GuiGraphics guiGraphics, int mouseX, int mouseY) {
@@ -576,21 +579,21 @@ final class WaypointListScreen extends Screen {
     }
 
     private void renderScrollbar(GuiGraphics guiGraphics, int mouseX, int mouseY) {
+        if (this.maxScrollOffset() <= 0) {
+            return;
+        }
+
         int x = this.scrollbarX();
         int top = this.rowsTop();
         int bottom = this.rowsBottom();
         int trackHeight = bottom - top;
         int contentHeight = this.visibleWaypoints.size() * ROW_HEIGHT;
-        int knobHeight = this.maxScrollOffset() <= 0 || contentHeight <= 0
-            ? trackHeight
-            : Mth.clamp((int)((float)(trackHeight * trackHeight) / (float)contentHeight), 32, trackHeight - 8);
+        int knobHeight = Mth.clamp((int)((float)(trackHeight * trackHeight) / (float)contentHeight), 32, trackHeight - 8);
         int maxKnobY = bottom - knobHeight;
-        int knobY = this.maxScrollOffset() <= 0 ? top : top + (int)Math.round((trackHeight - knobHeight) * (this.scrollOffset / (double)this.maxScrollOffset()));
+        int knobY = top + (int)Math.round((trackHeight - knobHeight) * (this.scrollOffset / (double)this.maxScrollOffset()));
         knobY = Mth.clamp(knobY, top, maxKnobY);
-        RenderSystem.enableBlend();
-        guiGraphics.blitSprite(SCROLLER_BACKGROUND_SPRITE, x, top, SCROLLBAR_WIDTH, trackHeight);
-        guiGraphics.blitSprite(SCROLLER_SPRITE, x, knobY, SCROLLBAR_WIDTH, knobHeight);
-        RenderSystem.disableBlend();
+        guiGraphics.fill(x, top, x + SCROLLBAR_WIDTH, bottom, SCROLLBAR_TRACK_COLOR);
+        guiGraphics.fill(x + 1, knobY, x + SCROLLBAR_WIDTH - 1, knobY + knobHeight, SCROLLBAR_KNOB_COLOR);
     }
 
     private void renderPanel(GuiGraphics guiGraphics, int left, int top, int right, int bottom) {
@@ -756,6 +759,10 @@ final class WaypointListScreen extends Screen {
     }
 
     private boolean isMouseOverScrollbar(double mouseX, double mouseY) {
+        if (this.maxScrollOffset() <= 0) {
+            return false;
+        }
+
         return mouseX >= this.scrollbarX()
             && mouseX < this.scrollbarX() + SCROLLBAR_WIDTH
             && mouseY >= this.rowsTop()
@@ -1038,6 +1045,7 @@ final class WaypointListScreen extends Screen {
         private static final int MAX_VISIBLE_OPTIONS = 6;
         private static final int MENU_SCROLLBAR_WIDTH = 8;
         private static final int MENU_OPTION_HEIGHT = 18;
+        private static final int MENU_PADDING = 4;
         private static final int MENU_Z_OFFSET = 200;
         private static final int MENU_BACKGROUND_COLOR = 0xFF1B1B1B;
         private static final int MENU_BORDER_COLOR = 0xFF8E8E8E;
@@ -1092,9 +1100,9 @@ final class WaypointListScreen extends Screen {
             int visibleOptions = Math.min(MAX_VISIBLE_OPTIONS, this.options.size());
             int menuTop = this.y + this.height + 1;
             int optionHeight = this.menuOptionHeight();
-            int menuBottom = menuTop + visibleOptions * optionHeight;
-            int innerMenuTop = menuTop + 4;
-            int innerMenuBottom = menuBottom - 4;
+            int menuBottom = menuTop + MENU_PADDING * 2 + visibleOptions * optionHeight;
+            int innerMenuTop = menuTop + MENU_PADDING;
+            int innerMenuBottom = menuBottom - MENU_PADDING;
             boolean scrollable = this.maxScrollOffset() > 0;
             int textRight = this.x + this.width - (scrollable ? MENU_SCROLLBAR_WIDTH + 6 : 6);
 
@@ -1106,7 +1114,7 @@ final class WaypointListScreen extends Screen {
             for (int visibleIndex = 0; visibleIndex < visibleOptions; visibleIndex++) {
                 int index = this.scrollOffset + visibleIndex;
                 T option = this.options.get(index);
-                int optionTop = menuTop + visibleIndex * optionHeight;
+                int optionTop = innerMenuTop + visibleIndex * optionHeight;
                 boolean selectedOption = Objects.equals(option, this.selected);
                 boolean hoveredOption = mouseX >= this.x
                     && mouseX < textRight
@@ -1126,8 +1134,8 @@ final class WaypointListScreen extends Screen {
 
             if (scrollable) {
                 int scrollbarX = this.x + this.width - MENU_SCROLLBAR_WIDTH - 4;
-                int trackTop = menuTop + 4;
-                int trackBottom = menuBottom - 4;
+                int trackTop = innerMenuTop;
+                int trackBottom = innerMenuBottom;
                 int trackHeight = trackBottom - trackTop;
                 int knobHeight = Mth.clamp(trackHeight * visibleOptions / this.options.size(), 10, trackHeight);
                 int knobY = trackTop + (int)Math.round((trackHeight - knobHeight) * (this.scrollOffset / (double)this.maxScrollOffset()));
@@ -1166,8 +1174,9 @@ final class WaypointListScreen extends Screen {
             int visibleOptions = Math.min(MAX_VISIBLE_OPTIONS, this.options.size());
             int menuTop = this.y + this.height + 1;
             int optionHeight = this.menuOptionHeight();
-            if (mouseX >= this.x && mouseX < this.x + this.width && mouseY >= menuTop && mouseY < menuTop + visibleOptions * optionHeight) {
-                int index = this.scrollOffset + (int)((mouseY - menuTop) / optionHeight);
+            int innerMenuTop = menuTop + MENU_PADDING;
+            if (mouseX >= this.x && mouseX < this.x + this.width && mouseY >= innerMenuTop && mouseY < innerMenuTop + visibleOptions * optionHeight) {
+                int index = this.scrollOffset + (int)((mouseY - innerMenuTop) / optionHeight);
                 this.open = false;
                 T option = this.options.get(index);
                 if (!Objects.equals(option, this.selected)) {
@@ -1187,7 +1196,8 @@ final class WaypointListScreen extends Screen {
 
             int visibleOptions = Math.min(MAX_VISIBLE_OPTIONS, this.options.size());
             int menuTop = this.y + this.height + 1;
-            if (mouseX < this.x || mouseX >= this.x + this.width || mouseY < menuTop || mouseY >= menuTop + visibleOptions * this.menuOptionHeight()) {
+            int innerMenuTop = menuTop + MENU_PADDING;
+            if (mouseX < this.x || mouseX >= this.x + this.width || mouseY < innerMenuTop || mouseY >= innerMenuTop + visibleOptions * this.menuOptionHeight()) {
                 return false;
             }
 

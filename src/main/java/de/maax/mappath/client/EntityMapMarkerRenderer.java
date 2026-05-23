@@ -21,9 +21,13 @@ import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.monster.Enemy;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.player.PlayerModelPart;
+import net.minecraft.world.entity.projectile.DragonFireball;
+import net.minecraft.world.entity.projectile.Fireball;
+import net.minecraft.world.entity.projectile.ThrownTrident;
 import net.minecraft.world.entity.vehicle.AbstractMinecart;
 import net.minecraft.world.entity.vehicle.Boat;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -31,6 +35,7 @@ import java.util.Set;
 
 final class EntityMapMarkerRenderer {
     private static final int TEXTURE_SIZE = 64;
+    private static final int ITEM_TEXTURE_SIZE = 16;
     private static final int FALLBACK_OUTLINE_COLOR = 0xFF000000;
     private static final int HOSTILE_FALLBACK_COLOR = 0xFFFF3030;
     private static final int NEUTRAL_FALLBACK_COLOR = 0xFFFFA23D;
@@ -46,6 +51,8 @@ final class EntityMapMarkerRenderer {
         ResourceLocation.fromNamespaceAndPath(MapPath.MODID, "textures/gui/mob_icons/fallback/neutral.png");
     private static final ResourceLocation FRIENDLY_FALLBACK_TEXTURE =
         ResourceLocation.fromNamespaceAndPath(MapPath.MODID, "textures/gui/mob_icons/fallback/friendly.png");
+    private static final ResourceLocation DRAGON_FIREBALL_TEXTURE =
+        ResourceLocation.fromNamespaceAndPath(MapPath.MODID, "textures/gui/projectile_icons/dragon_breath.png");
     private static final Set<EntityType<?>> NEUTRAL_MOB_TYPES = Set.of(
         EntityType.DOLPHIN,
         EntityType.GOAT,
@@ -64,6 +71,9 @@ final class EntityMapMarkerRenderer {
         if (minecraft.player == null || !entity.isAlive()) {
             return false;
         }
+        if (target == EntityMarkerTarget.MINIMAP && entity instanceof ItemEntity) {
+            return false;
+        }
         EntityMarkerType markerType = markerType(entity);
         if (markerType == null
             || !MapPathConfig.CLIENT.showEntityMarkers(target, markerType)
@@ -78,7 +88,7 @@ final class EntityMapMarkerRenderer {
             return !mob.isInvisibleTo(minecraft.player);
         }
 
-        return markerItem(entity) != null;
+        return markerTexture(entity) != null || markerItem(entity) != null;
     }
 
     static boolean isWithinVerticalRange(Entity entity, Minecraft minecraft, float partialTick) {
@@ -107,6 +117,16 @@ final class EntityMapMarkerRenderer {
                 renderPlayer(guiGraphics, minecraft, player, centerX, centerY, markerSize);
             } else {
                 renderFallbackDot(guiGraphics, centerX, centerY, markerSize, PLAYER_FALLBACK_COLOR);
+            }
+            return;
+        }
+
+        ResourceLocation markerTexture = markerTexture(entity);
+        if (markerTexture != null) {
+            if (useIcons) {
+                renderTexture(guiGraphics, markerTexture, centerX, centerY, markerSize, ITEM_TEXTURE_SIZE);
+            } else {
+                renderFallbackDot(guiGraphics, centerX, centerY, markerSize, ITEM_FALLBACK_COLOR);
             }
             return;
         }
@@ -147,7 +167,7 @@ final class EntityMapMarkerRenderer {
         if (entity instanceof Mob mob) {
             return isBoss(mob) ? EntityMarkerType.BOSS : EntityMarkerType.MOB;
         }
-        return markerItem(entity) != null ? EntityMarkerType.ITEM : null;
+        return markerTexture(entity) != null || markerItem(entity) != null ? EntityMarkerType.ITEM : null;
     }
 
     private static boolean isPlayerListOpen(Minecraft minecraft) {
@@ -208,6 +228,12 @@ final class EntityMapMarkerRenderer {
             ItemStack itemStack = itemEntity.getItem();
             return itemStack.isEmpty() ? null : itemStack;
         }
+        if (entity instanceof ThrownTrident) {
+            return new ItemStack(Items.TRIDENT);
+        }
+        if (entity instanceof Fireball) {
+            return new ItemStack(Items.FIRE_CHARGE);
+        }
         if (entity instanceof AbstractMinecart || entity instanceof Boat) {
             ItemStack itemStack = entity.getPickResult();
             return itemStack == null || itemStack.isEmpty() ? null : itemStack;
@@ -216,7 +242,22 @@ final class EntityMapMarkerRenderer {
         return null;
     }
 
+    private static ResourceLocation markerTexture(Entity entity) {
+        return entity instanceof DragonFireball ? DRAGON_FIREBALL_TEXTURE : null;
+    }
+
     private static void renderTexture(GuiGraphics guiGraphics, ResourceLocation texture, float centerX, float centerY, int markerSize) {
+        renderTexture(guiGraphics, texture, centerX, centerY, markerSize, TEXTURE_SIZE);
+    }
+
+    private static void renderTexture(
+        GuiGraphics guiGraphics,
+        ResourceLocation texture,
+        float centerX,
+        float centerY,
+        int markerSize,
+        int textureSize
+    ) {
         guiGraphics.pose().pushPose();
         guiGraphics.pose().translate(centerX - markerSize / 2.0F, centerY - markerSize / 2.0F, 0.0F);
         guiGraphics.blit(
@@ -227,10 +268,10 @@ final class EntityMapMarkerRenderer {
             markerSize,
             0.0F,
             0.0F,
-            TEXTURE_SIZE,
-            TEXTURE_SIZE,
-            TEXTURE_SIZE,
-            TEXTURE_SIZE
+            textureSize,
+            textureSize,
+            textureSize,
+            textureSize
         );
         guiGraphics.pose().popPose();
     }

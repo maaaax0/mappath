@@ -72,6 +72,22 @@ public final class MapPathClient {
         GLFW.GLFW_KEY_B,
         "key.categories.mappath"
     );
+    private static final KeyMapping ZOOM_MINIMAP_IN = new KeyMapping(
+        "key.mappath.zoom_minimap_in",
+        KeyConflictContext.IN_GAME,
+        KeyModifier.SHIFT,
+        InputConstants.Type.KEYSYM,
+        GLFW.GLFW_KEY_RIGHT_BRACKET,
+        "key.categories.mappath"
+    );
+    private static final KeyMapping ZOOM_MINIMAP_OUT = new KeyMapping(
+        "key.mappath.zoom_minimap_out",
+        KeyConflictContext.IN_GAME,
+        KeyModifier.SHIFT,
+        InputConstants.Type.KEYSYM,
+        GLFW.GLFW_KEY_SLASH,
+        "key.categories.mappath"
+    );
 
     private MapPathClient() {
     }
@@ -82,6 +98,8 @@ public final class MapPathClient {
         event.register(CANCEL_ROUTE);
         event.register(CREATE_WAYPOINT);
         event.register(OPEN_WAYPOINTS);
+        event.register(ZOOM_MINIMAP_IN);
+        event.register(ZOOM_MINIMAP_OUT);
     }
 
     @SubscribeEvent
@@ -126,6 +144,26 @@ public final class MapPathClient {
         while (OPEN_WAYPOINTS.consumeClick()) {
             openWaypointListScreen(minecraft);
         }
+        while (ZOOM_MINIMAP_IN.consumeClick()) {
+            changeMinimapZoom(minecraft, -1);
+        }
+        while (ZOOM_MINIMAP_OUT.consumeClick()) {
+            changeMinimapZoom(minecraft, 1);
+        }
+    }
+
+    private static void changeMinimapZoom(Minecraft minecraft, int blocksPerPixelDelta) {
+        if (minecraft.level == null || minecraft.player == null || !MapPathConfig.CLIENT.showMinimap()) {
+            return;
+        }
+
+        int blocksPerPixel = Mth.clamp(MapPathConfig.CLIENT.minimapBlocksPerPixel() + blocksPerPixelDelta, 1, 8);
+        if (blocksPerPixel == MapPathConfig.CLIENT.minimapBlocksPerPixel()) {
+            return;
+        }
+
+        MapPathConfig.CLIENT.setMinimapBlocksPerPixel(blocksPerPixel);
+        minecraft.gui.setOverlayMessage(Component.translatable("gui.mappath.minimap_zoom", blocksPerPixel), false);
     }
 
     private static void updateDeathWaypoint(Minecraft minecraft) {

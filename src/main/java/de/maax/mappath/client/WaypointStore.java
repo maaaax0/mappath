@@ -213,7 +213,10 @@ final class WaypointStore {
             return;
         }
 
-        Waypoint waypoint = new Waypoint(UUID.randomUUID(), icon, name, worldX, worldY, worldZ, true);
+        this.addWaypoint(targetPath, currentDimension, new Waypoint(UUID.randomUUID(), icon, name, worldX, worldY, worldZ, true));
+    }
+
+    private void addWaypoint(Path targetPath, boolean currentDimension, Waypoint waypoint) {
         if (currentDimension && targetPath.equals(this.waypointPath)) {
             this.waypoints.put(waypoint.id(), waypoint);
             this.dirty = true;
@@ -266,6 +269,61 @@ final class WaypointStore {
 
         saveWaypoints(entry.path(), waypoints);
         if (entry.currentDimension()) {
+            this.dimensionId = null;
+        }
+    }
+
+    void moveWaypoint(Minecraft minecraft, UUID id, Path targetPath, boolean targetCurrentDimension, BannerIconType icon, String name, int worldX, int worldY, int worldZ) {
+        this.ensureLoaded(minecraft);
+        if (this.waypointPath == null || targetPath == null || icon == BannerIconType.DEATH || !this.waypoints.containsKey(id)) {
+            return;
+        }
+
+        Waypoint existingWaypoint = this.waypoints.get(id);
+        if (existingWaypoint.icon() == BannerIconType.DEATH) {
+            return;
+        }
+
+        Waypoint updatedWaypoint = new Waypoint(id, icon, name, worldX, worldY, worldZ, existingWaypoint.highlighted());
+        if (targetCurrentDimension && targetPath.equals(this.waypointPath)) {
+            this.waypoints.put(id, updatedWaypoint);
+            this.dirty = true;
+            this.flush();
+            return;
+        }
+
+        this.waypoints.remove(id);
+        this.dirty = true;
+        this.flush();
+        this.addWaypoint(targetPath, targetCurrentDimension, updatedWaypoint);
+    }
+
+    void moveWaypoint(DimensionWaypoint entry, Path targetPath, boolean targetCurrentDimension, BannerIconType icon, String name, int worldX, int worldY, int worldZ) {
+        if (entry.waypoint().icon() == BannerIconType.DEATH || targetPath == null || icon == BannerIconType.DEATH) {
+            return;
+        }
+
+        if (entry.path().equals(targetPath)) {
+            this.updateWaypoint(entry, icon, name, worldX, worldY, worldZ);
+            return;
+        }
+
+        List<Waypoint> sourceWaypoints = loadWaypoints(entry.path());
+        Waypoint existingWaypoint = null;
+        for (Waypoint waypoint : sourceWaypoints) {
+            if (waypoint.id().equals(entry.waypoint().id())) {
+                existingWaypoint = waypoint;
+                break;
+            }
+        }
+        if (existingWaypoint == null) {
+            return;
+        }
+
+        sourceWaypoints.removeIf(waypoint -> waypoint.id().equals(entry.waypoint().id()));
+        saveWaypoints(entry.path(), sourceWaypoints);
+        this.addWaypoint(targetPath, targetCurrentDimension, new Waypoint(existingWaypoint.id(), icon, name, worldX, worldY, worldZ, existingWaypoint.highlighted()));
+        if (entry.currentDimension() || targetCurrentDimension) {
             this.dimensionId = null;
         }
     }

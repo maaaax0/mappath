@@ -296,6 +296,14 @@ final class WorldMapManager {
         this.waypointStore.updateWaypoint(waypoint, icon, name, worldX, worldY, worldZ);
     }
 
+    void moveWaypoint(Minecraft minecraft, UUID id, Path targetPath, boolean targetCurrentDimension, BannerIconType icon, String name, int worldX, int worldY, int worldZ) {
+        this.waypointStore.moveWaypoint(minecraft, id, targetPath, targetCurrentDimension, icon, name, worldX, worldY, worldZ);
+    }
+
+    void moveWaypoint(WaypointStore.DimensionWaypoint waypoint, Path targetPath, boolean targetCurrentDimension, BannerIconType icon, String name, int worldX, int worldY, int worldZ) {
+        this.waypointStore.moveWaypoint(waypoint, targetPath, targetCurrentDimension, icon, name, worldX, worldY, worldZ);
+    }
+
     void setWaypointHighlighted(Minecraft minecraft, UUID id, boolean highlighted) {
         this.waypointStore.setWaypointHighlighted(minecraft, id, highlighted);
     }
