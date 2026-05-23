@@ -332,7 +332,7 @@ final class MapTileStore implements AutoCloseable {
         return null;
     }
 
-    private static String sanitizePathPart(String value) {
+    static String sanitizePathPart(String value) {
         String sanitized = value.replaceAll("[^A-Za-z0-9._-]", "_");
         return sanitized.isBlank() ? "unknown" : sanitized;
     }

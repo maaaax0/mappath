@@ -2,6 +2,7 @@ package de.maax.mappath.client;
 
 import de.maax.mappath.BannerIconType;
 import de.maax.mappath.MapPath;
+import de.maax.mappath.MapPathConfig;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
@@ -54,19 +55,21 @@ final class HighlightedTargetRenderer {
         }
 
         Vec3 cameraPosition = event.getCamera().getPosition();
-        for (WaypointStore.Waypoint waypoint : worldMapManager.waypoints(minecraft)) {
-            if (waypoint.highlighted()) {
-                projectLabel(
-                    minecraft,
-                    event.getModelViewMatrix(),
-                    event.getProjectionMatrix(),
-                    cameraPosition,
-                    waypoint.name(),
-                    bannerTexture(waypoint.icon()),
-                    waypoint.worldX() + 0.5D,
-                    waypoint.worldY() + WAYPOINT_LABEL_Y_OFFSET,
-                    waypoint.worldZ() + 0.5D
-                );
+        if (MapPathConfig.CLIENT.showWaypoints()) {
+            for (WaypointStore.Waypoint waypoint : worldMapManager.waypoints(minecraft)) {
+                if (waypoint.highlighted()) {
+                    projectLabel(
+                        minecraft,
+                        event.getModelViewMatrix(),
+                        event.getProjectionMatrix(),
+                        cameraPosition,
+                        waypoint.name(),
+                        bannerTexture(waypoint.icon()),
+                        waypoint.worldX() + 0.5D,
+                        waypoint.worldY() + WAYPOINT_LABEL_Y_OFFSET,
+                        waypoint.worldZ() + 0.5D
+                    );
+                }
             }
         }
 

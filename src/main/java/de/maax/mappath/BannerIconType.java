@@ -18,12 +18,19 @@ public enum BannerIconType {
     PURPLE("purple"),
     RED("red"),
     WHITE("white"),
-    YELLOW("yellow");
+    YELLOW("yellow"),
+    DEATH("death", "textures/gui/mag_icons/death.png");
 
     private final String id;
+    private final String texturePath;
 
     BannerIconType(String id) {
+        this(id, "textures/gui/mag_icons/" + id + "_banner.png");
+    }
+
+    BannerIconType(String id, String texturePath) {
         this.id = id;
+        this.texturePath = texturePath;
     }
 
     public String id() {
@@ -35,7 +42,7 @@ public enum BannerIconType {
     }
 
     public String texturePath() {
-        return "textures/gui/mag_icons/" + this.id + "_banner.png";
+        return this.texturePath;
     }
 
     public static BannerIconType byId(String id) {

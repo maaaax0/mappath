@@ -268,6 +268,10 @@ final class WorldMapManager {
         return this.waypointStore.waypoints(minecraft);
     }
 
+    List<WaypointStore.DimensionWaypoint> allWaypoints(Minecraft minecraft) {
+        return this.waypointStore.allWaypoints(minecraft);
+    }
+
     WaypointStore.Waypoint waypoint(Minecraft minecraft, UUID id) {
         return this.waypointStore.waypoint(minecraft, id);
     }
@@ -276,8 +280,20 @@ final class WorldMapManager {
         this.waypointStore.addWaypoint(minecraft, icon, name, worldX, worldY, worldZ);
     }
 
+    void addWaypoint(Path targetPath, boolean currentDimension, BannerIconType icon, String name, int worldX, int worldY, int worldZ) {
+        this.waypointStore.addWaypoint(targetPath, currentDimension, icon, name, worldX, worldY, worldZ);
+    }
+
+    void addDeathWaypoint(Minecraft minecraft, int worldX, int worldY, int worldZ) {
+        this.waypointStore.addDeathWaypoint(minecraft, worldX, worldY, worldZ);
+    }
+
     void updateWaypoint(Minecraft minecraft, UUID id, BannerIconType icon, String name, int worldX, int worldY, int worldZ) {
         this.waypointStore.updateWaypoint(minecraft, id, icon, name, worldX, worldY, worldZ);
+    }
+
+    void updateWaypoint(WaypointStore.DimensionWaypoint waypoint, BannerIconType icon, String name, int worldX, int worldY, int worldZ) {
+        this.waypointStore.updateWaypoint(waypoint, icon, name, worldX, worldY, worldZ);
     }
 
     void setWaypointHighlighted(Minecraft minecraft, UUID id, boolean highlighted) {
@@ -286,6 +302,10 @@ final class WorldMapManager {
 
     void deleteWaypoint(Minecraft minecraft, UUID id) {
         this.waypointStore.deleteWaypoint(minecraft, id);
+    }
+
+    void deleteWaypoint(WaypointStore.DimensionWaypoint waypoint) {
+        this.waypointStore.deleteWaypoint(waypoint);
     }
 
     int defaultWaypointY(Minecraft minecraft, int worldX, int worldZ) {

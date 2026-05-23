@@ -2,6 +2,7 @@ package de.maax.mappath.client;
 
 import de.maax.mappath.BannerIconType;
 import de.maax.mappath.MapPath;
+import de.maax.mappath.MapPathConfig;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Renderable;
@@ -12,7 +13,9 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 
+import java.nio.file.Path;
 import java.util.Arrays;
+import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
 final class WaypointCreateScreen extends Screen {
@@ -21,14 +24,20 @@ final class WaypointCreateScreen extends Screen {
     private static final int ROW_GAP = 24;
     private static final int BANNER_TEXTURE_SIZE = 64;
     private static final int BANNER_PREVIEW_SIZE = 18;
+    private static final List<BannerIconType> SELECTABLE_ICONS = Arrays.stream(BannerIconType.values())
+        .filter(icon -> icon != BannerIconType.DEATH)
+        .toList();
 
     private final Screen parent;
     private final WorldMapManager worldMapManager;
     private final WaypointStore.Waypoint editingWaypoint;
+    private final WaypointStore.DimensionWaypoint editingDimensionWaypoint;
     private final int defaultX;
     private final int defaultY;
     private final int defaultZ;
     private final boolean prefillCoordinates;
+    private final Path targetWaypointPath;
+    private final boolean targetCurrentDimension;
     private BannerIconType selectedIcon;
     private EditBox nameBox;
     private EditBox xBox;
@@ -45,12 +54,29 @@ final class WaypointCreateScreen extends Screen {
         this.parent = parent;
         this.worldMapManager = worldMapManager;
         this.editingWaypoint = null;
+        this.editingDimensionWaypoint = null;
         this.defaultX = defaultX;
         this.defaultY = defaultY;
         this.defaultZ = defaultZ;
         this.prefillCoordinates = prefillCoordinates;
-        BannerIconType[] icons = BannerIconType.values();
-        this.selectedIcon = icons[ThreadLocalRandom.current().nextInt(icons.length)];
+        this.targetWaypointPath = null;
+        this.targetCurrentDimension = true;
+        this.selectedIcon = randomSelectableIcon();
+    }
+
+    WaypointCreateScreen(Screen parent, WorldMapManager worldMapManager, Path targetWaypointPath, boolean targetCurrentDimension, int defaultX, int defaultY, int defaultZ) {
+        super(Component.translatable("screen.mappath.create_waypoint"));
+        this.parent = parent;
+        this.worldMapManager = worldMapManager;
+        this.editingWaypoint = null;
+        this.editingDimensionWaypoint = null;
+        this.defaultX = defaultX;
+        this.defaultY = defaultY;
+        this.defaultZ = defaultZ;
+        this.prefillCoordinates = true;
+        this.targetWaypointPath = targetWaypointPath;
+        this.targetCurrentDimension = targetCurrentDimension;
+        this.selectedIcon = randomSelectableIcon();
     }
 
     WaypointCreateScreen(Screen parent, WorldMapManager worldMapManager, WaypointStore.Waypoint editingWaypoint) {
@@ -58,11 +84,29 @@ final class WaypointCreateScreen extends Screen {
         this.parent = parent;
         this.worldMapManager = worldMapManager;
         this.editingWaypoint = editingWaypoint;
+        this.editingDimensionWaypoint = null;
         this.defaultX = editingWaypoint.worldX();
         this.defaultY = editingWaypoint.worldY();
         this.defaultZ = editingWaypoint.worldZ();
         this.prefillCoordinates = true;
-        this.selectedIcon = editingWaypoint.icon();
+        this.targetWaypointPath = null;
+        this.targetCurrentDimension = true;
+        this.selectedIcon = editingWaypoint.icon() == BannerIconType.DEATH ? randomSelectableIcon() : editingWaypoint.icon();
+    }
+
+    WaypointCreateScreen(Screen parent, WorldMapManager worldMapManager, WaypointStore.DimensionWaypoint editingDimensionWaypoint) {
+        super(Component.translatable("screen.mappath.edit_waypoint"));
+        this.parent = parent;
+        this.worldMapManager = worldMapManager;
+        this.editingWaypoint = editingDimensionWaypoint.waypoint();
+        this.editingDimensionWaypoint = editingDimensionWaypoint;
+        this.defaultX = editingDimensionWaypoint.waypoint().worldX();
+        this.defaultY = editingDimensionWaypoint.waypoint().worldY();
+        this.defaultZ = editingDimensionWaypoint.waypoint().worldZ();
+        this.prefillCoordinates = true;
+        this.targetWaypointPath = null;
+        this.targetCurrentDimension = editingDimensionWaypoint.currentDimension();
+        this.selectedIcon = editingDimensionWaypoint.waypoint().icon() == BannerIconType.DEATH ? randomSelectableIcon() : editingDimensionWaypoint.waypoint().icon();
     }
 
     @Override
@@ -74,7 +118,7 @@ final class WaypointCreateScreen extends Screen {
 
         this.addRenderableWidget(
             CycleButton.builder(BannerIconType::displayName)
-                .withValues(Arrays.asList(BannerIconType.values()))
+                .withValues(SELECTABLE_ICONS)
                 .withInitialValue(this.selectedIcon)
                 .create(fieldLeft, top + 20, fieldWidth, FIELD_HEIGHT, Component.translatable("gui.mappath.waypoint_icon"), (button, value) -> this.selectedIcon = value)
         );
@@ -176,8 +220,17 @@ final class WaypointCreateScreen extends Screen {
             name = "X: " + worldX + " Y: " + worldY + " Z: " + worldZ;
         }
 
-        if (this.editingWaypoint == null) {
+        if (this.editingWaypoint == null && !MapPathConfig.CLIENT.showWaypoints()) {
+            this.minecraft.setScreen(this.parent);
+            return;
+        }
+
+        if (this.editingWaypoint == null && this.targetWaypointPath != null) {
+            this.worldMapManager.addWaypoint(this.targetWaypointPath, this.targetCurrentDimension, this.selectedIcon, name, worldX, worldY, worldZ);
+        } else if (this.editingWaypoint == null) {
             this.worldMapManager.addWaypoint(this.minecraft, this.selectedIcon, name, worldX, worldY, worldZ);
+        } else if (this.editingDimensionWaypoint != null) {
+            this.worldMapManager.updateWaypoint(this.editingDimensionWaypoint, this.selectedIcon, name, worldX, worldY, worldZ);
         } else {
             this.worldMapManager.updateWaypoint(this.minecraft, this.editingWaypoint.id(), this.selectedIcon, name, worldX, worldY, worldZ);
         }
@@ -195,5 +248,9 @@ final class WaypointCreateScreen extends Screen {
         } catch (NumberFormatException ignored) {
             return null;
         }
+    }
+
+    private static BannerIconType randomSelectableIcon() {
+        return SELECTABLE_ICONS.get(ThreadLocalRandom.current().nextInt(SELECTABLE_ICONS.size()));
     }
 }

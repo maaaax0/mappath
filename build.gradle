@@ -35,6 +35,18 @@ runs {
         systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
     }
 
+    clientOp {
+        run 'client'
+        systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+        programArguments.addAll '--username', 'MapPathOp', '--quickPlayMultiplayer', 'localhost:25565'
+    }
+
+    clientGuest {
+        run 'client'
+        systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+        programArguments.addAll '--username', 'MapPathGuest', '--quickPlayMultiplayer', 'localhost:25565'
+    }
+
     server {
         systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
         argument '--nogui'

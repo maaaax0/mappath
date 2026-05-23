@@ -1,16 +1,19 @@
 package de.maax.mappath.client;
 
 import de.maax.mappath.BannerIconType;
+import de.maax.mappath.EntityMarkerTarget;
 import de.maax.mappath.MapPath;
 import de.maax.mappath.MapPathConfig;
 import de.maax.mappath.StructureMarkerType;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.server.IntegratedServer;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
+import net.minecraft.world.entity.Entity;
 import com.mojang.math.Axis;
 import org.lwjgl.glfw.GLFW;
 
@@ -23,10 +26,13 @@ import java.util.UUID;
 
 public final class WorldMapScreen extends Screen {
     private static final int SCREEN_PADDING = 12;
-    private static final int PLAYER_MARKER_SIZE = 8;
+    private static final int PLAYER_MARKER_SIZE = 12;
     private static final int PLAYER_MARKER_TEXTURE_SIZE = 64;
     private static final int MIN_STRUCTURE_MARKER_SIZE = 4;
-    private static final int MAX_STRUCTURE_MARKER_SIZE = 14;
+    private static final int MAX_STRUCTURE_MARKER_SIZE = Math.round(PLAYER_MARKER_SIZE * 4.0F / 5.0F);
+    private static final int MIN_MOB_MARKER_SIZE = 6;
+    private static final int MAX_MOB_MARKER_SIZE = Math.round(PLAYER_MARKER_SIZE * 4.0F / 5.0F);
+    private static final float MIN_MOB_MARKER_VISIBLE_ZOOM = 0.25F;
     private static final int STRUCTURE_MARKER_TEXTURE_SIZE = 64;
     private static final int STRUCTURE_MARKER_TOGGLE_SIZE = 20;
     private static final int MARKER_TOGGLE_GAP = 4;
@@ -38,6 +44,8 @@ public final class WorldMapScreen extends Screen {
     private static final int STRUCTURE_CONTEXT_MENU_ITEM_COUNT = 5;
     private static final int STRUCTURE_CONTEXT_MENU_WIDTH = 170;
     private static final int CONTEXT_MENU_MARGIN = 4;
+    private static final int CREATE_WAYPOINT_BUTTON_WIDTH = 120;
+    private static final int CREATE_WAYPOINT_BUTTON_HEIGHT = 20;
     private static final int UNEXPLORED_MAP_COLOR = 0xFF111417;
     private static final int CONTEXT_MENU_BACKGROUND_COLOR = 0xEE16191D;
     private static final int CONTEXT_MENU_BORDER_COLOR = 0xFF5D646C;
@@ -82,6 +90,7 @@ public final class WorldMapScreen extends Screen {
     private int structureContextMenuX;
     private int structureContextMenuY;
     private String structureContextMenuKey;
+    private Button createWaypointButton;
     private final Set<UUID> pendingDeletedWaypoints = new HashSet<>();
     private final Set<String> pendingDeletedStructureMarkers = new HashSet<>();
 
@@ -109,6 +118,17 @@ public final class WorldMapScreen extends Screen {
         if (this.mapAtlas == null) {
             this.mapAtlas = this.worldMapManager.getMapAtlas(this.minecraft);
         }
+        this.createWaypointButton = this.addRenderableWidget(
+            Button.builder(Component.literal("Waypoints"), button -> this.openWaypointListScreen())
+                .bounds(
+                    SCREEN_PADDING,
+                    this.createWaypointButtonY(),
+                    CREATE_WAYPOINT_BUTTON_WIDTH,
+                    CREATE_WAYPOINT_BUTTON_HEIGHT
+                )
+                .build()
+        );
+        this.updateCreateWaypointButtonState();
     }
 
     @Override
@@ -124,13 +144,13 @@ public final class WorldMapScreen extends Screen {
 
     @Override
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
-        super.render(guiGraphics, mouseX, mouseY, partialTick);
+        this.renderBackground(guiGraphics, mouseX, mouseY, partialTick);
 
         if (this.mapAtlas != null) {
             this.mapAtlas.render(guiGraphics, this.mapX, this.mapY, this.mapSize, this.centerWorldX, this.centerWorldZ, this.screenPixelsPerBlock());
         }
 
-        this.renderMapMarkers(guiGraphics);
+        this.renderMapMarkers(guiGraphics, partialTick);
 
         float markerCenterX = this.worldToScreenX(this.minecraft != null && this.minecraft.player != null ? this.minecraft.player.getX() : this.centerWorldX);
         float markerCenterY = this.worldToScreenY(this.minecraft != null && this.minecraft.player != null ? this.minecraft.player.getZ() : this.centerWorldZ);
@@ -187,11 +207,16 @@ public final class WorldMapScreen extends Screen {
             );
         }
 
+        this.updateCreateWaypointButtonState();
+        if (this.createWaypointButton != null && this.createWaypointButton.visible) {
+            this.createWaypointButton.render(guiGraphics, mouseX, mouseY, partialTick);
+        }
         this.renderContextMenu(guiGraphics, mouseX, mouseY);
         this.renderWaypointContextMenu(guiGraphics, mouseX, mouseY);
         this.renderStructureContextMenu(guiGraphics, mouseX, mouseY);
         this.renderMinimapToggle(guiGraphics, mouseX, mouseY);
         this.renderBetaFeaturesToggle(guiGraphics, mouseX, mouseY);
+        this.renderMobMarkersToggle(guiGraphics, mouseX, mouseY);
         this.renderWaypointsToggle(guiGraphics, mouseX, mouseY);
         this.renderStructureMarkersToggle(guiGraphics, mouseX, mouseY);
     }
@@ -204,6 +229,10 @@ public final class WorldMapScreen extends Screen {
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         if (keyCode == GLFW.GLFW_KEY_M) {
             this.onClose();
+            return true;
+        }
+        if (keyCode == GLFW.GLFW_KEY_B && MapPathConfig.CLIENT.showWaypoints()) {
+            this.openWaypointListScreen();
             return true;
         }
         if (keyCode == GLFW.GLFW_KEY_DELETE) {
@@ -259,6 +288,11 @@ public final class WorldMapScreen extends Screen {
             MapPathConfig.CLIENT.setShowWaypoints(!MapPathConfig.CLIENT.showWaypoints());
             return true;
         }
+        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && this.isMouseOverMobMarkersToggle(mouseX, mouseY)) {
+            this.closeAllContextMenus();
+            MapPathConfig.CLIENT.setShowMobMarkers(!MapPathConfig.CLIENT.showMobMarkers());
+            return true;
+        }
 
         if (this.waypointContextMenuOpen) {
             if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
@@ -299,12 +333,12 @@ public final class WorldMapScreen extends Screen {
                 if (this.canShowBetaFeatures() && this.worldMapManager.hasActiveRoute()) {
                     itemIndex++;
                 }
-                if (waypointMenuItem == itemIndex++) {
+                if (this.canEditContextWaypoint() && waypointMenuItem == itemIndex++) {
                     this.openWaypointEditScreen();
                     this.waypointContextMenuOpen = false;
                     return true;
                 }
-                if (waypointMenuItem == itemIndex++) {
+                if (this.canModifyContextWaypoint() && waypointMenuItem == itemIndex++) {
                     this.toggleContextWaypointHighlight();
                     this.waypointContextMenuOpen = false;
                     return true;
@@ -411,7 +445,7 @@ public final class WorldMapScreen extends Screen {
                 if (this.canShowBetaFeatures() && this.worldMapManager.hasActiveRoute()) {
                     itemIndex++;
                 }
-                if (contextMenuItem == itemIndex++) {
+                if (MapPathConfig.CLIENT.showWaypoints() && contextMenuItem == itemIndex++) {
                     this.openWaypointCreateScreen();
                     this.contextMenuOpen = false;
                     return true;
@@ -422,6 +456,10 @@ public final class WorldMapScreen extends Screen {
             if (button != GLFW.GLFW_MOUSE_BUTTON_RIGHT || !this.isMouseOverMap(mouseX, mouseY)) {
                 return true;
             }
+        }
+
+        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && super.mouseClicked(mouseX, mouseY, button)) {
+            return true;
         }
 
         if (button == GLFW.GLFW_MOUSE_BUTTON_RIGHT && this.isMouseOverMap(mouseX, mouseY)) {
@@ -511,13 +549,16 @@ public final class WorldMapScreen extends Screen {
         return mouseX >= this.mapX && mouseX < this.mapX + this.mapSize && mouseY >= this.mapY && mouseY < this.mapY + this.mapSize;
     }
 
-    private void renderMapMarkers(GuiGraphics guiGraphics) {
+    private void renderMapMarkers(GuiGraphics guiGraphics, float partialTick) {
         int markerSize = this.structureMarkerSize();
         if (MapPathConfig.CLIENT.showStructureMarkers()) {
             this.renderStructureMarkers(guiGraphics, markerSize);
         }
         if (MapPathConfig.CLIENT.showWaypoints()) {
             this.renderWaypoints(guiGraphics, markerSize);
+        }
+        if (MapPathConfig.CLIENT.showAnyEntityMarkers(EntityMarkerTarget.WORLD_MAP) && this.zoom >= MIN_MOB_MARKER_VISIBLE_ZOOM) {
+            this.renderMobMarkers(guiGraphics, partialTick);
         }
     }
 
@@ -597,6 +638,33 @@ public final class WorldMapScreen extends Screen {
         }
     }
 
+    private void renderMobMarkers(GuiGraphics guiGraphics, float partialTick) {
+        if (this.minecraft == null || this.minecraft.level == null || this.minecraft.player == null) {
+            return;
+        }
+
+        int markerSize = this.mobMarkerSize();
+        for (Entity entity : this.minecraft.level.entitiesForRendering()) {
+            if (!EntityMapMarkerRenderer.shouldRenderEntityMarker(entity, this.minecraft, EntityMarkerTarget.WORLD_MAP)
+                || !EntityMapMarkerRenderer.isWithinVerticalRange(entity, this.minecraft, partialTick)) {
+                continue;
+            }
+
+            double worldX = Mth.lerp(partialTick, entity.xo, entity.getX());
+            double worldZ = Mth.lerp(partialTick, entity.zo, entity.getZ());
+            float markerCenterX = this.worldToScreenX(worldX);
+            float markerCenterY = this.worldToScreenY(worldZ);
+            if (markerCenterX < this.mapX - markerSize
+                || markerCenterX > this.mapX + this.mapSize + markerSize
+                || markerCenterY < this.mapY - markerSize
+                || markerCenterY > this.mapY + this.mapSize + markerSize) {
+                continue;
+            }
+
+            EntityMapMarkerRenderer.render(guiGraphics, this.minecraft, entity, EntityMarkerTarget.WORLD_MAP, markerCenterX, markerCenterY, markerSize);
+        }
+    }
+
     private void renderMarkerName(GuiGraphics guiGraphics, String name, float centerX, float topY, int markerSize, boolean pendingDelete) {
         float labelScale = markerSize / (float) MAX_STRUCTURE_MARKER_SIZE;
         int textWidth = this.font.width(name);
@@ -617,6 +685,10 @@ public final class WorldMapScreen extends Screen {
         return Mth.clamp(Math.round(MAX_STRUCTURE_MARKER_SIZE * Mth.sqrt(Math.min(this.zoom, 1.0F))), MIN_STRUCTURE_MARKER_SIZE, MAX_STRUCTURE_MARKER_SIZE);
     }
 
+    private int mobMarkerSize() {
+        return Mth.clamp(Math.round(MAX_MOB_MARKER_SIZE * Mth.sqrt(Math.min(this.zoom, 1.0F))), MIN_MOB_MARKER_SIZE, MAX_MOB_MARKER_SIZE);
+    }
+
     private void renderStructureMarkersToggle(GuiGraphics guiGraphics, int mouseX, int mouseY) {
         int left = this.structureMarkersToggleX();
         int top = this.structureMarkersToggleY();
@@ -627,6 +699,12 @@ public final class WorldMapScreen extends Screen {
         int left = this.waypointsToggleX();
         int top = this.waypointsToggleY();
         this.renderMarkerToggle(guiGraphics, left, top, this.isMouseOverWaypointsToggle(mouseX, mouseY), MapPathConfig.CLIENT.showWaypoints() ? "W" : "w");
+    }
+
+    private void renderMobMarkersToggle(GuiGraphics guiGraphics, int mouseX, int mouseY) {
+        int left = this.mobMarkersToggleX();
+        int top = this.mobMarkersToggleY();
+        this.renderMarkerToggle(guiGraphics, left, top, this.isMouseOverMobMarkersToggle(mouseX, mouseY), MapPathConfig.CLIENT.showMobMarkers() ? "E" : "e");
     }
 
     private void renderBetaFeaturesToggle(GuiGraphics guiGraphics, int mouseX, int mouseY) {
@@ -672,6 +750,12 @@ public final class WorldMapScreen extends Screen {
         return this.isMouseOverMarkerToggle(mouseX, mouseY, left, top);
     }
 
+    private boolean isMouseOverMobMarkersToggle(double mouseX, double mouseY) {
+        int left = this.mobMarkersToggleX();
+        int top = this.mobMarkersToggleY();
+        return this.isMouseOverMarkerToggle(mouseX, mouseY, left, top);
+    }
+
     private boolean isMouseOverBetaFeaturesToggle(double mouseX, double mouseY) {
         int left = this.betaFeaturesToggleX();
         int top = this.betaFeaturesToggleY();
@@ -696,7 +780,7 @@ public final class WorldMapScreen extends Screen {
     }
 
     private int structureMarkersToggleY() {
-        return this.height - SCREEN_PADDING - STRUCTURE_MARKER_TOGGLE_SIZE;
+        return this.mobMarkersToggleY() - STRUCTURE_MARKER_TOGGLE_SIZE - MARKER_TOGGLE_GAP;
     }
 
     private int waypointsToggleX() {
@@ -704,7 +788,7 @@ public final class WorldMapScreen extends Screen {
     }
 
     private int waypointsToggleY() {
-        return this.structureMarkersToggleY() - STRUCTURE_MARKER_TOGGLE_SIZE - MARKER_TOGGLE_GAP;
+        return this.height - SCREEN_PADDING - STRUCTURE_MARKER_TOGGLE_SIZE;
     }
 
     private int betaFeaturesToggleX() {
@@ -712,7 +796,15 @@ public final class WorldMapScreen extends Screen {
     }
 
     private int betaFeaturesToggleY() {
-        return this.waypointsToggleY() - STRUCTURE_MARKER_TOGGLE_SIZE - MARKER_TOGGLE_GAP;
+        return this.structureMarkersToggleY() - STRUCTURE_MARKER_TOGGLE_SIZE - MARKER_TOGGLE_GAP;
+    }
+
+    private int mobMarkersToggleX() {
+        return this.structureMarkersToggleX();
+    }
+
+    private int mobMarkersToggleY() {
+        return this.minimapToggleY() - STRUCTURE_MARKER_TOGGLE_SIZE - MARKER_TOGGLE_GAP;
     }
 
     private int minimapToggleX() {
@@ -720,7 +812,11 @@ public final class WorldMapScreen extends Screen {
     }
 
     private int minimapToggleY() {
-        return this.betaFeaturesToggleY() - STRUCTURE_MARKER_TOGGLE_SIZE - MARKER_TOGGLE_GAP;
+        return this.waypointsToggleY() - STRUCTURE_MARKER_TOGGLE_SIZE - MARKER_TOGGLE_GAP;
+    }
+
+    private int createWaypointButtonY() {
+        return SCREEN_PADDING + this.font.lineHeight * 2 + 10;
     }
 
     private void openContextMenu(double mouseX, double mouseY) {
@@ -785,7 +881,9 @@ public final class WorldMapScreen extends Screen {
                 this.renderContextMenuItem(guiGraphics, Component.translatable("gui.mappath.cancel_route"), left, top, itemIndex++);
             }
         }
-        this.renderContextMenuItem(guiGraphics, Component.translatable("gui.mappath.create_waypoint"), left, top, itemIndex);
+        if (MapPathConfig.CLIENT.showWaypoints()) {
+            this.renderContextMenuItem(guiGraphics, Component.translatable("gui.mappath.create_waypoint"), left, top, itemIndex);
+        }
     }
 
     private void renderWaypointContextMenu(GuiGraphics guiGraphics, int mouseX, int mouseY) {
@@ -824,10 +922,14 @@ public final class WorldMapScreen extends Screen {
                     this.renderContextMenuItem(guiGraphics, Component.translatable("gui.mappath.cancel_route"), left, top, itemIndex++);
                 }
             }
-            this.renderContextMenuItem(guiGraphics, Component.translatable("gui.mappath.edit_waypoint"), left, top, itemIndex++);
+            if (this.canEditContextWaypoint()) {
+                this.renderContextMenuItem(guiGraphics, Component.translatable("gui.mappath.edit_waypoint"), left, top, itemIndex++);
+            }
             WaypointStore.Waypoint waypoint = this.contextWaypoint();
-            String highlightKey = waypoint != null && waypoint.highlighted() ? "gui.mappath.disable_highlight" : "gui.mappath.enable_highlight";
-            this.renderContextMenuItem(guiGraphics, Component.translatable(highlightKey), left, top, itemIndex++);
+            if (this.canModifyContextWaypoint()) {
+                String highlightKey = waypoint != null && waypoint.highlighted() ? "gui.mappath.disable_highlight" : "gui.mappath.enable_highlight";
+                this.renderContextMenuItem(guiGraphics, Component.translatable(highlightKey), left, top, itemIndex++);
+            }
             this.renderContextMenuItem(guiGraphics, Component.translatable("gui.mappath.delete_waypoint"), left, top, itemIndex++);
         }
     }
@@ -921,11 +1023,11 @@ public final class WorldMapScreen extends Screen {
     }
 
     private int contextMenuHeight() {
-        return CONTEXT_MENU_ITEM_HEIGHT * (this.contextItemCount(CONTEXT_MENU_ITEM_COUNT, true) + 1);
+        return CONTEXT_MENU_ITEM_HEIGHT * (this.contextItemCount(CONTEXT_MENU_ITEM_COUNT, true) + (MapPathConfig.CLIENT.showWaypoints() ? 1 : 0));
     }
 
     private int waypointContextMenuHeight() {
-        return CONTEXT_MENU_ITEM_HEIGHT * (this.isWaypointPendingDelete(this.waypointContextMenuId) ? 3 : this.contextItemCount(WAYPOINT_CONTEXT_MENU_ITEM_COUNT, true) + 1);
+        return CONTEXT_MENU_ITEM_HEIGHT * (this.isWaypointPendingDelete(this.waypointContextMenuId) ? 3 : this.waypointContextItemCount());
     }
 
     private int structureContextMenuHeight() {
@@ -941,6 +1043,17 @@ public final class WorldMapScreen extends Screen {
             itemCount--;
         }
         return itemCount + (this.canShowBetaFeatures() && this.worldMapManager.hasActiveRoute() ? 1 : 0);
+    }
+
+    private int waypointContextItemCount() {
+        int itemCount = this.contextItemCount(WAYPOINT_CONTEXT_MENU_ITEM_COUNT, true) + 1;
+        if (!this.canEditContextWaypoint()) {
+            itemCount--;
+        }
+        if (!this.canModifyContextWaypoint()) {
+            itemCount--;
+        }
+        return itemCount;
     }
 
     private boolean canShowBetaFeatures() {
@@ -967,11 +1080,11 @@ public final class WorldMapScreen extends Screen {
     }
 
     private void copyWaypointContextCoordinates() {
-        this.copyCoordinatesToClipboard(this.waypointContextCoordinatesLabel());
+        this.copyCoordinatesToClipboard(this.waypointContextCoordinatesClipboardText());
     }
 
     private void copyStructureContextCoordinates() {
-        this.copyCoordinatesToClipboard(this.structureContextCoordinatesLabel());
+        this.copyCoordinatesToClipboard(this.structureContextCoordinatesClipboardText());
     }
 
     private void copyCoordinatesToClipboard(String coordinates) {
@@ -985,7 +1098,7 @@ public final class WorldMapScreen extends Screen {
     }
 
     private String contextCoordinatesClipboardText() {
-        return this.contextCoordinatesLabel();
+        return this.formatClipboardCoordinates(this.contextWorldX, this.contextWorldY(), this.contextWorldZ);
     }
 
     private String waypointContextCoordinatesLabel() {
@@ -993,6 +1106,13 @@ public final class WorldMapScreen extends Screen {
         return waypoint == null
             ? ""
             : this.formatCoordinates(waypoint.worldX(), waypoint.worldY(), waypoint.worldZ());
+    }
+
+    private String waypointContextCoordinatesClipboardText() {
+        WaypointStore.Waypoint waypoint = this.contextWaypoint();
+        return waypoint == null
+            ? ""
+            : this.formatClipboardCoordinates(waypoint.worldX(), waypoint.worldY(), waypoint.worldZ());
     }
 
     private String structureContextCoordinatesLabel() {
@@ -1007,12 +1127,28 @@ public final class WorldMapScreen extends Screen {
         return this.formatCoordinates(marker.worldX(), marker.worldY(), marker.worldZ());
     }
 
+    private String structureContextCoordinatesClipboardText() {
+        StructureMarkerStore.Marker marker = this.contextStructureMarker();
+        if (marker == null) {
+            return "";
+        }
+        if (marker.worldY() == Integer.MIN_VALUE) {
+            return this.formatClipboardCoordinates(marker.worldX(), this.worldMapManager.defaultWaypointY(this.minecraft, marker.worldX(), marker.worldZ()), marker.worldZ());
+        }
+
+        return this.formatClipboardCoordinates(marker.worldX(), marker.worldY(), marker.worldZ());
+    }
+
     private int contextWorldY() {
         return this.worldMapManager.defaultWaypointY(this.minecraft, this.contextWorldX, this.contextWorldZ);
     }
 
     private String formatCoordinates(int worldX, int worldY, int worldZ) {
         return "X: " + worldX + " Y: " + worldY + " Z: " + worldZ;
+    }
+
+    private String formatClipboardCoordinates(int worldX, int worldY, int worldZ) {
+        return worldX + " " + worldY + " " + worldZ;
     }
 
     private void teleportToContextPosition() {
@@ -1034,9 +1170,32 @@ public final class WorldMapScreen extends Screen {
     }
 
     private void openWaypointCreateScreen() {
+        if (!MapPathConfig.CLIENT.showWaypoints()) {
+            return;
+        }
+
         int defaultY = this.worldMapManager.defaultWaypointY(this.minecraft, this.contextWorldX, this.contextWorldZ);
         if (this.minecraft != null) {
             this.minecraft.setScreen(new WaypointCreateScreen(this, this.worldMapManager, this.contextWorldX, defaultY, this.contextWorldZ));
+        }
+    }
+
+    private void openWaypointListScreen() {
+        if (this.minecraft == null
+            || this.minecraft.player == null
+            || !MapPathConfig.CLIENT.showWaypoints()) {
+            return;
+        }
+
+        this.closeAllContextMenus();
+        this.minecraft.setScreen(new WaypointListScreen(this, this.worldMapManager));
+    }
+
+    private void updateCreateWaypointButtonState() {
+        if (this.createWaypointButton != null) {
+            boolean showWaypoints = MapPathConfig.CLIENT.showWaypoints();
+            this.createWaypointButton.active = showWaypoints;
+            this.createWaypointButton.visible = showWaypoints;
         }
     }
 
@@ -1065,7 +1224,7 @@ public final class WorldMapScreen extends Screen {
 
     private void openWaypointEditScreen() {
         WaypointStore.Waypoint waypoint = this.contextWaypoint();
-        if (waypoint != null && this.minecraft != null) {
+        if (waypoint != null && waypoint.icon() != BannerIconType.DEATH && this.minecraft != null) {
             this.minecraft.setScreen(new WaypointCreateScreen(this, this.worldMapManager, waypoint));
         }
     }
@@ -1090,13 +1249,23 @@ public final class WorldMapScreen extends Screen {
 
     private void toggleContextWaypointHighlight() {
         WaypointStore.Waypoint waypoint = this.contextWaypoint();
-        if (waypoint != null) {
+        if (waypoint != null && waypoint.icon() != BannerIconType.DEATH) {
             this.worldMapManager.setWaypointHighlighted(this.minecraft, waypoint.id(), !waypoint.highlighted());
         }
     }
 
     private WaypointStore.Waypoint contextWaypoint() {
         return this.waypointContextMenuId == null ? null : this.worldMapManager.waypoint(this.minecraft, this.waypointContextMenuId);
+    }
+
+    private boolean canEditContextWaypoint() {
+        WaypointStore.Waypoint waypoint = this.contextWaypoint();
+        return waypoint != null && waypoint.icon() != BannerIconType.DEATH;
+    }
+
+    private boolean canModifyContextWaypoint() {
+        WaypointStore.Waypoint waypoint = this.contextWaypoint();
+        return waypoint != null && waypoint.icon() != BannerIconType.DEATH;
     }
 
     private void teleportToStructureContextPosition() {
@@ -1340,4 +1509,5 @@ public final class WorldMapScreen extends Screen {
 
         return textures;
     }
+
 }

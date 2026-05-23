@@ -2,6 +2,7 @@ package de.maax.mappath.client;
 
 import com.mojang.math.Axis;
 import de.maax.mappath.BannerIconType;
+import de.maax.mappath.EntityMarkerTarget;
 import de.maax.mappath.MapPath;
 import de.maax.mappath.MapPathConfig;
 import de.maax.mappath.StructureMarkerType;
@@ -9,6 +10,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
+import net.minecraft.world.entity.Entity;
 import net.neoforged.neoforge.client.event.RenderGuiEvent;
 
 import java.util.EnumMap;
@@ -17,9 +19,15 @@ import java.util.Map;
 final class MinimapRenderer {
     private static final int MARGIN = 8;
     private static final int PLAYER_MARKER_SIZE = 8;
-    private static final int MARKER_SIZE = 6;
+    private static final int MARKER_SIZE = Math.round(PLAYER_MARKER_SIZE * 4.0F / 5.0F);
+    private static final int MOB_MARKER_SIZE = MARKER_SIZE;
     private static final int PLAYER_MARKER_TEXTURE_SIZE = 64;
     private static final int MARKER_TEXTURE_SIZE = 64;
+    private static final double MOB_MARKER_RENDER_DISTANCE_BLOCKS = 96.0D;
+    private static final double MOB_MARKER_RENDER_DISTANCE_SQR = MOB_MARKER_RENDER_DISTANCE_BLOCKS * MOB_MARKER_RENDER_DISTANCE_BLOCKS;
+    private static final double EXTENDED_ENTITY_MARKER_RENDER_DISTANCE_BLOCKS = MOB_MARKER_RENDER_DISTANCE_BLOCKS * 2.0D;
+    private static final double EXTENDED_ENTITY_MARKER_RENDER_DISTANCE_SQR =
+        EXTENDED_ENTITY_MARKER_RENDER_DISTANCE_BLOCKS * EXTENDED_ENTITY_MARKER_RENDER_DISTANCE_BLOCKS;
     private static final int BACKGROUND_TEXTURE_SIZE = 512;
     private static final int BACKGROUND_CONTENT_INSET = 23;
     private static final int BACKGROUND_CONTENT_SIZE = BACKGROUND_TEXTURE_SIZE - BACKGROUND_CONTENT_INSET * 2;
@@ -76,7 +84,7 @@ final class MinimapRenderer {
         }
 
         guiGraphics.enableScissor(contentLeft, contentTop, contentLeft + innerSize, contentTop + innerSize);
-        renderMarkers(guiGraphics, worldMapManager, minecraft, contentLeft, contentTop, innerSize, centerWorldX, centerWorldZ, pixelsPerBlock);
+        renderMarkers(guiGraphics, worldMapManager, minecraft, contentLeft, contentTop, innerSize, centerWorldX, centerWorldZ, pixelsPerBlock, partialTick);
         renderPlayer(guiGraphics, minecraft, contentLeft + innerSize / 2.0F, contentTop + innerSize / 2.0F, partialTick);
         guiGraphics.disableScissor();
     }
@@ -90,7 +98,8 @@ final class MinimapRenderer {
         int size,
         double centerWorldX,
         double centerWorldZ,
-        double pixelsPerBlock
+        double pixelsPerBlock,
+        float partialTick
     ) {
         if (MapPathConfig.CLIENT.showStructureMarkers()) {
             for (StructureMarkerStore.Marker marker : worldMapManager.structureMarkers(minecraft)) {
@@ -105,14 +114,65 @@ final class MinimapRenderer {
 
         if (MapPathConfig.CLIENT.showWaypoints()) {
             for (WaypointStore.Waypoint waypoint : worldMapManager.waypoints(minecraft)) {
+                float markerX = worldToMinimapX(left, size, waypoint.worldX(), centerWorldX, pixelsPerBlock);
+                float markerY = worldToMinimapY(top, size, waypoint.worldZ(), centerWorldZ, pixelsPerBlock);
                 renderMarker(
                     guiGraphics,
                     BANNER_ICON_TEXTURES.get(waypoint.icon()),
-                    worldToMinimapX(left, size, waypoint.worldX(), centerWorldX, pixelsPerBlock),
-                    worldToMinimapY(top, size, waypoint.worldZ(), centerWorldZ, pixelsPerBlock)
+                    clampMarkerToMinimap(markerX, left, size, MARKER_SIZE),
+                    clampMarkerToMinimap(markerY, top, size, MARKER_SIZE)
                 );
             }
         }
+
+        if (MapPathConfig.CLIENT.showAnyEntityMarkers(EntityMarkerTarget.MINIMAP)) {
+            renderMobMarkers(guiGraphics, minecraft, left, top, size, centerWorldX, centerWorldZ, pixelsPerBlock, partialTick);
+        }
+    }
+
+    private static void renderMobMarkers(
+        GuiGraphics guiGraphics,
+        Minecraft minecraft,
+        int left,
+        int top,
+        int size,
+        double centerWorldX,
+        double centerWorldZ,
+        double pixelsPerBlock,
+        float partialTick
+    ) {
+        for (Entity entity : minecraft.level.entitiesForRendering()) {
+            if (!EntityMapMarkerRenderer.shouldRenderEntityMarker(entity, minecraft, EntityMarkerTarget.MINIMAP)
+                || !EntityMapMarkerRenderer.isWithinVerticalRange(entity, minecraft, partialTick)
+                || minecraft.player.distanceToSqr(entity) > entityMarkerRenderDistanceSqr(entity)) {
+                continue;
+            }
+
+            double worldX = Mth.lerp(partialTick, entity.xo, entity.getX());
+            double worldZ = Mth.lerp(partialTick, entity.zo, entity.getZ());
+            float markerX = worldToMinimapX(left, size, worldX, centerWorldX, pixelsPerBlock);
+            float markerY = worldToMinimapY(top, size, worldZ, centerWorldZ, pixelsPerBlock);
+            EntityMapMarkerRenderer.render(
+                guiGraphics,
+                minecraft,
+                entity,
+                EntityMarkerTarget.MINIMAP,
+                clampMarkerToMinimap(markerX, left, size, MOB_MARKER_SIZE),
+                clampMarkerToMinimap(markerY, top, size, MOB_MARKER_SIZE),
+                MOB_MARKER_SIZE
+            );
+        }
+    }
+
+    private static double entityMarkerRenderDistanceSqr(Entity entity) {
+        return EntityMapMarkerRenderer.hasExtendedRenderRange(entity)
+            ? EXTENDED_ENTITY_MARKER_RENDER_DISTANCE_SQR
+            : MOB_MARKER_RENDER_DISTANCE_SQR;
+    }
+
+    private static float clampMarkerToMinimap(float coordinate, int start, int size, int markerSize) {
+        float markerOverlap = markerSize / 4.0F;
+        return Mth.clamp(coordinate, start + markerOverlap, start + size - markerOverlap);
     }
 
     private static void renderMarker(GuiGraphics guiGraphics, ResourceLocation texture, float centerX, float centerY) {
@@ -120,10 +180,12 @@ final class MinimapRenderer {
             return;
         }
 
+        guiGraphics.pose().pushPose();
+        guiGraphics.pose().translate(centerX - MARKER_SIZE / 2.0F, centerY - MARKER_SIZE / 2.0F, 0.0F);
         guiGraphics.blit(
             texture,
-            Mth.floor(centerX - MARKER_SIZE / 2.0F),
-            Mth.floor(centerY - MARKER_SIZE / 2.0F),
+            0,
+            0,
             MARKER_SIZE,
             MARKER_SIZE,
             0.0F,
@@ -133,6 +195,7 @@ final class MinimapRenderer {
             MARKER_TEXTURE_SIZE,
             MARKER_TEXTURE_SIZE
         );
+        guiGraphics.pose().popPose();
     }
 
     private static void renderPlayer(GuiGraphics guiGraphics, Minecraft minecraft, float centerX, float centerY, float partialTick) {
@@ -179,4 +242,5 @@ final class MinimapRenderer {
         }
         return textures;
     }
+
 }

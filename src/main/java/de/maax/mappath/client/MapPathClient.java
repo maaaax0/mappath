@@ -6,6 +6,7 @@ import com.mojang.brigadier.arguments.DoubleArgumentType;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.blaze3d.platform.InputConstants;
 import de.maax.mappath.MapPath;
+import de.maax.mappath.MapPathConfig;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.client.gui.GuiGraphics;
@@ -44,6 +45,7 @@ public final class MapPathClient {
         ResourceLocation.fromNamespaceAndPath(MapPath.MODID, "map_button_highlighted")
     );
     private static final WorldMapManager WORLD_MAP_MANAGER = new WorldMapManager();
+    private static boolean deathWaypointCreated;
     private static final KeyMapping OPEN_WORLD_MAP = new KeyMapping(
         "key.mappath.open_world_map",
         InputConstants.Type.KEYSYM,
@@ -64,6 +66,12 @@ public final class MapPathClient {
         GLFW.GLFW_KEY_N,
         "key.categories.mappath"
     );
+    private static final KeyMapping OPEN_WAYPOINTS = new KeyMapping(
+        "key.mappath.open_waypoints",
+        InputConstants.Type.KEYSYM,
+        GLFW.GLFW_KEY_B,
+        "key.categories.mappath"
+    );
 
     private MapPathClient() {
     }
@@ -73,6 +81,7 @@ public final class MapPathClient {
         event.register(OPEN_WORLD_MAP);
         event.register(CANCEL_ROUTE);
         event.register(CREATE_WAYPOINT);
+        event.register(OPEN_WAYPOINTS);
     }
 
     @SubscribeEvent
@@ -103,6 +112,7 @@ public final class MapPathClient {
     public static void onClientTick(ClientTickEvent.Post event) {
         Minecraft minecraft = Minecraft.getInstance();
         WORLD_MAP_MANAGER.recordAroundPlayer(minecraft);
+        updateDeathWaypoint(minecraft);
 
         while (OPEN_WORLD_MAP.consumeClick()) {
             openWorldMap(minecraft);
@@ -113,6 +123,33 @@ public final class MapPathClient {
         while (CREATE_WAYPOINT.consumeClick()) {
             openWaypointCreateScreenAtPlayer(minecraft);
         }
+        while (OPEN_WAYPOINTS.consumeClick()) {
+            openWaypointListScreen(minecraft);
+        }
+    }
+
+    private static void updateDeathWaypoint(Minecraft minecraft) {
+        if (minecraft.level == null || minecraft.player == null) {
+            deathWaypointCreated = false;
+            return;
+        }
+
+        if (!minecraft.player.isDeadOrDying()) {
+            deathWaypointCreated = false;
+            return;
+        }
+
+        if (deathWaypointCreated) {
+            return;
+        }
+
+        WORLD_MAP_MANAGER.addDeathWaypoint(
+            minecraft,
+            Mth.floor(minecraft.player.getX()),
+            Mth.floor(minecraft.player.getY()),
+            Mth.floor(minecraft.player.getZ())
+        );
+        deathWaypointCreated = true;
     }
 
     @SubscribeEvent
@@ -159,8 +196,16 @@ public final class MapPathClient {
         return WORLD_MAP_MANAGER;
     }
 
+    private static void openWaypointListScreen(Minecraft minecraft) {
+        if (minecraft.level == null || minecraft.player == null || minecraft.screen != null || !MapPathConfig.CLIENT.showWaypoints()) {
+            return;
+        }
+
+        minecraft.setScreen(new WaypointListScreen(null, WORLD_MAP_MANAGER));
+    }
+
     private static void openWaypointCreateScreenAtPlayer(Minecraft minecraft) {
-        if (minecraft.level == null || minecraft.player == null || minecraft.screen != null) {
+        if (minecraft.level == null || minecraft.player == null || minecraft.screen != null || !MapPathConfig.CLIENT.showWaypoints()) {
             return;
         }
 

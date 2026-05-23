@@ -3,6 +3,9 @@ package de.maax.mappath;
 import net.neoforged.neoforge.common.ModConfigSpec;
 import org.apache.commons.lang3.tuple.Pair;
 
+import java.util.EnumMap;
+import java.util.Map;
+
 public final class MapPathConfig {
     public static final int DEFAULT_LIVE_REFRESH_RADIUS = 64;
     public static final int MAX_LIVE_REFRESH_RADIUS = 512;
@@ -15,6 +18,9 @@ public final class MapPathConfig {
     public static final boolean DEFAULT_SHOW_MAP_LOAD_STATUS = true;
     public static final boolean DEFAULT_SHOW_STRUCTURE_MARKERS = true;
     public static final boolean DEFAULT_SHOW_WAYPOINTS = true;
+    public static final boolean DEFAULT_SHOW_DEATH_WAYPOINTS_IN_WAYPOINT_LIST = true;
+    public static final EntityMarkerMode DEFAULT_ENTITY_MARKER_MODE = EntityMarkerMode.ICON;
+    public static final int DEFAULT_ENTITY_MARKER_VERTICAL_RANGE = 16;
     public static final boolean DEFAULT_SHOW_BETA_FEATURES = false;
     public static final boolean DEFAULT_SHOW_MINIMAP = true;
     public static final int DEFAULT_MINIMAP_SIZE = 128;
@@ -48,6 +54,9 @@ public final class MapPathConfig {
         private final ModConfigSpec.BooleanValue showMapLoadStatus;
         private final ModConfigSpec.BooleanValue showStructureMarkers;
         private final ModConfigSpec.BooleanValue showWaypoints;
+        private final ModConfigSpec.BooleanValue showDeathWaypointsInWaypointList;
+        private final Map<EntityMarkerTarget, Map<EntityMarkerType, ModConfigSpec.EnumValue<EntityMarkerMode>>> entityMarkerModes;
+        private final ModConfigSpec.IntValue entityMarkerVerticalRange;
         private final ModConfigSpec.BooleanValue showBetaFeatures;
         private final ModConfigSpec.BooleanValue showMinimap;
         private final ModConfigSpec.IntValue minimapSize;
@@ -94,30 +103,47 @@ public final class MapPathConfig {
                 .comment("Shows a small status line while existing map data is loaded into the world map atlas.")
                 .translation("mappath.configuration.showMapLoadStatus")
                 .define("showMapLoadStatus", DEFAULT_SHOW_MAP_LOAD_STATUS);
+
+            builder.push("worldMap");
             this.showStructureMarkers = builder
                 .comment("Shows discovered structure icons on the world map.")
-                .translation("mappath.configuration.showStructureMarkers")
+                .translation("mappath.configuration.worldMap.showStructureMarkers")
                 .define("showStructureMarkers", DEFAULT_SHOW_STRUCTURE_MARKERS);
             this.showWaypoints = builder
                 .comment("Shows waypoint icons on the world map.")
-                .translation("mappath.configuration.showWaypoints")
+                .translation("mappath.configuration.worldMap.showWaypoints")
                 .define("showWaypoints", DEFAULT_SHOW_WAYPOINTS);
+            this.showDeathWaypointsInWaypointList = builder
+                .comment("Shows death waypoints in the waypoint list.")
+                .translation("mappath.configuration.worldMap.showDeathWaypointsInWaypointList")
+                .define("showDeathWaypointsInWaypointList", DEFAULT_SHOW_DEATH_WAYPOINTS_IN_WAYPOINT_LIST);
             this.showBetaFeatures = builder
                 .comment("Enables beta features on the world map.")
-                .translation("mappath.configuration.showBetaFeatures")
+                .translation("mappath.configuration.worldMap.showBetaFeatures")
                 .define("showBetaFeatures", DEFAULT_SHOW_BETA_FEATURES);
+            builder.pop();
+
+            this.entityMarkerModes = this.defineEntityMarkerModes(builder);
+            this.entityMarkerVerticalRange = builder
+                .comment("Maximum vertical distance in blocks from the player for entity markers.")
+                .translation("mappath.configuration.entityMarkerVerticalRange")
+                .defineInRange("entityMarkerVerticalRange", DEFAULT_ENTITY_MARKER_VERTICAL_RANGE, 0, 384);
+
+            builder.push("minimap");
             this.showMinimap = builder
                 .comment("Shows a small minimap in the top-right HUD.")
-                .translation("mappath.configuration.showMinimap")
+                .translation("mappath.configuration.minimap.showMinimap")
                 .define("showMinimap", DEFAULT_SHOW_MINIMAP);
             this.minimapSize = builder
                 .comment("Minimap size in HUD pixels.")
-                .translation("mappath.configuration.minimapSize")
+                .translation("mappath.configuration.minimap.minimapSize")
                 .defineInRange("minimapSize", DEFAULT_MINIMAP_SIZE, 64, 256);
             this.minimapBlocksPerPixel = builder
                 .comment("Minimap zoom level. Higher values show more blocks with less detail.")
-                .translation("mappath.configuration.minimapBlocksPerPixel")
+                .translation("mappath.configuration.minimap.minimapBlocksPerPixel")
                 .defineInRange("minimapBlocksPerPixel", DEFAULT_MINIMAP_BLOCKS_PER_PIXEL, 1, 8);
+            builder.pop();
+
             this.showRouteVisualizer = builder
                 .comment("Shows the active client-side route visualizer in the world and HUD.")
                 .translation("mappath.configuration.showRouteVisualizer")
@@ -180,6 +206,54 @@ public final class MapPathConfig {
             return this.showWaypoints.get();
         }
 
+        public boolean showDeathWaypointsInWaypointList() {
+            return this.showDeathWaypointsInWaypointList.get();
+        }
+
+        public boolean showMobMarkers() {
+            for (EntityMarkerTarget target : EntityMarkerTarget.values()) {
+                if (this.showEntityRadar(target)) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        public boolean showEntityRadar(EntityMarkerTarget target) {
+            for (EntityMarkerType type : EntityMarkerType.values()) {
+                if (this.showEntityMarkers(target, type)) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        public boolean showAnyEntityMarkers(EntityMarkerTarget target) {
+            return this.showEntityRadar(target);
+        }
+
+        public boolean showEntityMarkers(EntityMarkerTarget target, EntityMarkerType type) {
+            return this.entityMarkerMode(target, type).visible();
+        }
+
+        public boolean useEntityMarkerIcons(EntityMarkerTarget target, EntityMarkerType type) {
+            return this.entityMarkerMode(target, type).useIcons();
+        }
+
+        public boolean entityMarkersPlayerListOnly(EntityMarkerTarget target, EntityMarkerType type) {
+            return this.entityMarkerMode(target, type).playerListOnly();
+        }
+
+        public EntityMarkerMode entityMarkerMode(EntityMarkerTarget target, EntityMarkerType type) {
+            return this.entityMarkerModes.get(target).get(type).get();
+        }
+
+        public int entityMarkerVerticalRange() {
+            return this.entityMarkerVerticalRange.get();
+        }
+
         public boolean showBetaFeatures() {
             return this.showBetaFeatures.get();
         }
@@ -226,6 +300,21 @@ public final class MapPathConfig {
             this.showWaypoints.save();
         }
 
+        public void setShowDeathWaypointsInWaypointList(boolean showDeathWaypointsInWaypointList) {
+            this.showDeathWaypointsInWaypointList.set(showDeathWaypointsInWaypointList);
+            this.showDeathWaypointsInWaypointList.save();
+        }
+
+        public void setShowMobMarkers(boolean showMobMarkers) {
+            for (EntityMarkerTarget target : EntityMarkerTarget.values()) {
+                for (EntityMarkerType type : EntityMarkerType.values()) {
+                    ModConfigSpec.EnumValue<EntityMarkerMode> mode = this.entityMarkerModes.get(target).get(type);
+                    mode.set(showMobMarkers ? DEFAULT_ENTITY_MARKER_MODE : EntityMarkerMode.OFF);
+                    mode.save();
+                }
+            }
+        }
+
         public void setShowBetaFeatures(boolean showBetaFeatures) {
             this.showBetaFeatures.set(showBetaFeatures);
             this.showBetaFeatures.save();
@@ -234,6 +323,116 @@ public final class MapPathConfig {
         public void setShowMinimap(boolean showMinimap) {
             this.showMinimap.set(showMinimap);
             this.showMinimap.save();
+        }
+
+        public void setLiveRefreshRadius(int liveRefreshRadius) {
+            this.liveRefreshRadius.set(liveRefreshRadius);
+            this.liveRefreshRadius.save();
+        }
+
+        public void setRecordIntervalTicks(int recordIntervalTicks) {
+            this.recordIntervalTicks.set(recordIntervalTicks);
+            this.recordIntervalTicks.save();
+        }
+
+        public void setLiveRefreshColumnsPerTick(int liveRefreshColumnsPerTick) {
+            this.liveRefreshColumnsPerTick.set(liveRefreshColumnsPerTick);
+            this.liveRefreshColumnsPerTick.save();
+        }
+
+        public void setChunkRefreshesPerTick(int chunkRefreshesPerTick) {
+            this.chunkRefreshesPerTick.set(chunkRefreshesPerTick);
+            this.chunkRefreshesPerTick.save();
+        }
+
+        public void setMissingChunkSearchIntervalTicks(int missingChunkSearchIntervalTicks) {
+            this.missingChunkSearchIntervalTicks.set(missingChunkSearchIntervalTicks);
+            this.missingChunkSearchIntervalTicks.save();
+        }
+
+        public void setTileWritesPerTick(int tileWritesPerTick) {
+            this.tileWritesPerTick.set(tileWritesPerTick);
+            this.tileWritesPerTick.save();
+        }
+
+        public void setInitialMapLoadPerTick(int initialMapLoadPerTick) {
+            this.initialMapLoadPerTick.set(initialMapLoadPerTick);
+            this.initialMapLoadPerTick.save();
+        }
+
+        public void setShowMapLoadStatus(boolean showMapLoadStatus) {
+            this.showMapLoadStatus.set(showMapLoadStatus);
+            this.showMapLoadStatus.save();
+        }
+
+        public void setEntityMarkerVerticalRange(int entityMarkerVerticalRange) {
+            this.entityMarkerVerticalRange.set(entityMarkerVerticalRange);
+            this.entityMarkerVerticalRange.save();
+        }
+
+        public void setMinimapSize(int minimapSize) {
+            this.minimapSize.set(minimapSize);
+            this.minimapSize.save();
+        }
+
+        public void setMinimapBlocksPerPixel(int minimapBlocksPerPixel) {
+            this.minimapBlocksPerPixel.set(minimapBlocksPerPixel);
+            this.minimapBlocksPerPixel.save();
+        }
+
+        public void setShowRouteVisualizer(boolean showRouteVisualizer) {
+            this.showRouteVisualizer.set(showRouteVisualizer);
+            this.showRouteVisualizer.save();
+        }
+
+        public void setShowRouteTargetMarker(boolean showRouteTargetMarker) {
+            this.showRouteTargetMarker.set(showRouteTargetMarker);
+            this.showRouteTargetMarker.save();
+        }
+
+        public void setRouteTrailMaxSpeed(int routeTrailMaxSpeed) {
+            this.routeTrailMaxSpeed.set(routeTrailMaxSpeed);
+            this.routeTrailMaxSpeed.save();
+        }
+
+        public void setRoutePlanningDistance(int routePlanningDistance) {
+            this.routePlanningDistance.set(routePlanningDistance);
+            this.routePlanningDistance.save();
+        }
+
+        public void setRouteRecalculateDistance(int routeRecalculateDistance) {
+            this.routeRecalculateDistance.set(routeRecalculateDistance);
+            this.routeRecalculateDistance.save();
+        }
+
+        public void setEntityMarkerMode(EntityMarkerTarget target, EntityMarkerType type, EntityMarkerMode mode) {
+            ModConfigSpec.EnumValue<EntityMarkerMode> value = this.entityMarkerModes.get(target).get(type);
+            value.set(mode);
+            value.save();
+        }
+
+        private Map<EntityMarkerTarget, Map<EntityMarkerType, ModConfigSpec.EnumValue<EntityMarkerMode>>> defineEntityMarkerModes(ModConfigSpec.Builder builder) {
+            Map<EntityMarkerTarget, Map<EntityMarkerType, ModConfigSpec.EnumValue<EntityMarkerMode>>> modes = new EnumMap<>(EntityMarkerTarget.class);
+            for (EntityMarkerTarget target : EntityMarkerTarget.values()) {
+                Map<EntityMarkerType, ModConfigSpec.EnumValue<EntityMarkerMode>> targetModes = new EnumMap<>(EntityMarkerType.class);
+                builder.push(target.configKey());
+                builder.push("entityRadar");
+                for (EntityMarkerType type : EntityMarkerType.values()) {
+                    targetModes.put(type, this.defineEntityMarkerMode(builder, target, type));
+                }
+                builder.pop();
+                builder.pop();
+                modes.put(target, Map.copyOf(targetModes));
+            }
+            return Map.copyOf(modes);
+        }
+
+        private ModConfigSpec.EnumValue<EntityMarkerMode> defineEntityMarkerMode(ModConfigSpec.Builder builder, EntityMarkerTarget target, EntityMarkerType type) {
+            String prefix = target.configKey() + ".entityRadar." + type.configKey();
+            return builder
+                .comment("Entity radar mode for " + type.configKey() + " markers on the " + target.configKey() + ". Options: ICON, DOTS, PLAYER_LIST, OFF.")
+                .translation("mappath.configuration." + prefix)
+                .defineEnum(type.configKey(), DEFAULT_ENTITY_MARKER_MODE);
         }
     }
 }
